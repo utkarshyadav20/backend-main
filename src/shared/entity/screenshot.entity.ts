@@ -22,10 +22,10 @@ export class Screenshot extends Model<Screenshot> {
   buildId: string;
 
   @Column({
-    type: DataType.BLOB,
+    type: DataType.TEXT,
     field: 'Screenshot',
   })
-  screenshot: any;
+  screenshot: string;
 
   @Column({
     type: DataType.STRING,

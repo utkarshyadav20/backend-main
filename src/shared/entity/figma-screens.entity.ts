@@ -39,7 +39,7 @@ export class FigmaScreens extends Model<FigmaScreens> {
    declare screenName: string;
 
   @Column({
-    type: DataType.BLOB('long'),
+    type: DataType.TEXT,
     field: 'Extracted_image',
     allowNull: true,
   })

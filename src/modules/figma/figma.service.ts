@@ -35,16 +35,21 @@ export class FigmaService {
             continue;
         }
 
-        const buffer = await this.fetchImageFromFigmaUrl(screen.screen_figma_url);
-        if (!buffer) continue;
+        // const buffer = await this.fetchImageFromFigmaUrl(screen.screen_figma_url);
+        // if (!buffer) continue;
+        
+        // REFACTOR: Fetch URL and save URL directly
+        const imageUrl = await this.fetchImageFromFigmaUrl(screen.screen_figma_url);
+        if (!imageUrl) continue;
+
 
         const newScreen = await this.figmaScreensRepository.create<FigmaScreens>({
           projectId: dto.project_id,
           nodeId: screen.node_id, 
           screenName: screen.Screen_name,
           figmaUrl: screen.screen_figma_url,
-          extractedImage: buffer,
-          projectType: project.dataValues.projectType, // Use projectType from project entity
+          extractedImage: imageUrl, // Save URL string
+          projectType: project.dataValues.projectType, 
         } as any);
 
         results.push(newScreen);
@@ -81,15 +86,15 @@ export class FigmaService {
           throw new NotFoundException(`Screen not found: Project ${projectId}, Type ${projectType}, Name ${screenName}`);
       }
 
-      const buffer = await this.fetchImageFromFigmaUrl(screen.figmaUrl);
-      if (!buffer) {
+      const imageUrl = await this.fetchImageFromFigmaUrl(screen.figmaUrl);
+      if (!imageUrl) {
           console.error(`Failed to fetch image from URL: ${screen.figmaUrl}`);
           throw new InternalServerErrorException(`Failed to fetch image for screen ${screenName}`);
       }
 
       // Use direct update to ensure DB persistence
       const [affectedRows] = await this.figmaScreensRepository.update(
-          { extractedImage: buffer },
+          { extractedImage: imageUrl },
           { where: { id: screen.id } }
       );
 
@@ -110,10 +115,10 @@ export class FigmaService {
 
       for (const screen of screens) {
           try {
-              const buffer = await this.fetchImageFromFigmaUrl(screen.figmaUrl);
-              if (buffer) {
+              const imageUrl = await this.fetchImageFromFigmaUrl(screen.figmaUrl);
+              if (imageUrl) {
                   await this.figmaScreensRepository.update(
-                      { extractedImage: buffer },
+                      { extractedImage: imageUrl },
                       { where: { id: screen.id } }
                   );
               }
@@ -152,7 +157,7 @@ export class FigmaService {
       return { success: true, message: `Deleted ${deletedCount} screens for project ${projectId} type ${projectType}` };
   }
 
-  async uploadManualScreen(projectId: string, projectType: string, screenName: string, imageBuffer: Buffer): Promise<FigmaScreens> {
+  async uploadManualScreen(projectId: string, projectType: string, screenName: string, imageUrl: string): Promise<FigmaScreens> {
       // Check if screen exists to update or create new
       const existingScreen = await this.figmaScreensRepository.findOne({
           where: {
@@ -164,7 +169,7 @@ export class FigmaService {
 
       if (existingScreen) {
           await existingScreen.update({
-              extractedImage: imageBuffer,
+              extractedImage: imageUrl,
               // Keep existing nodeId/url if they exist, or use defaults for manual overrides
           });
           return existingScreen;
@@ -173,14 +178,14 @@ export class FigmaService {
               projectId,
               projectType,
               screenName,
-              extractedImage: imageBuffer,
+              extractedImage: imageUrl,
               nodeId: `manual-${Date.now()}`,
               figmaUrl: 'manual-upload'
           } as any);
       }
   }
 
-  private async fetchImageFromFigmaUrl(url: string): Promise<Buffer | null> {
+  private async fetchImageFromFigmaUrl(url: string): Promise<string | null> {
       try {
         const urlObj = new URL(url);
         const fileKeyRegex = /\/design\/([^\/]+)\//;
@@ -231,6 +236,10 @@ export class FigmaService {
             return null;
         }
 
+        // REFACTOR: Return URL directly
+        return imageUrl;
+        
+        /* 
         const response = await fetch(imageUrl);
         if (!response.ok) {
            console.error(`Failed to fetch image content: ${response.statusText}`);
@@ -238,6 +247,7 @@ export class FigmaService {
         }
         const arrayBuffer = await response.arrayBuffer();
         return Buffer.from(arrayBuffer);
+        */
       } catch (error) {
           console.error(`Error extracting image from URL ${url}:`, error);
           return null;

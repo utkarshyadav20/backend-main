@@ -59,20 +59,23 @@ export class CompareService {
 
         this.logger.log(`Checking for existing screenshot: BuildId=${buildId}, ImageName=${imageName}, Found=${!!existingScreenshot}`);
 
-        const cleanBase64 = screenshot.image.replace(/^data:image\/\w+;base64,/, '');
-        const imageBuffer = Buffer.from(cleanBase64, 'base64');
+        // const cleanBase64 = screenshot.image.replace(/^data:image\/\w+;base64,/, '');
+        // const imageBuffer = Buffer.from(cleanBase64, 'base64');
+        
+        // REFACTOR: Save URL directly
+        const imageUrl = screenshot.image; 
 
         if (existingScreenshot) {
            await existingScreenshot.update({
-             screenshot: imageBuffer,
+             screenshot: imageUrl,
              projectId,
            } as any);
         } else {
           await this.screenshotRepository.create({
             projectId,
-            buildId, // Link to the determined buildId
+            buildId, 
             imageName: imageName,
-            screenshot: imageBuffer,
+            screenshot: imageUrl,
           } as any);
         }
       } catch (error) {
@@ -98,11 +101,32 @@ export class CompareService {
           continue;
         }
 
+        // REFACTOR: Screenshot is now a URL. Download it.
+        const screenshotUrl = screenshot.image; // Assuming DTO validation passes URLstring
+        const screenshotResponse = await fetch(screenshotUrl);
+        if (!screenshotResponse.ok) throw new Error(`Failed to fetch screenshot from ${screenshotUrl}`);
+        const screenshotBuffer = Buffer.from(await screenshotResponse.arrayBuffer());
+        
+        // REFACTOR: Figma image is now a URL. Download it.
+        const figmaUrl = matchingScreen.extractedImage;
+        const figmaResponse = await fetch(figmaUrl);
+        if (!figmaResponse.ok) throw new Error(`Failed to fetch figma image from ${figmaUrl}`);
+        const figmaBuffer = Buffer.from(await figmaResponse.arrayBuffer());
+
         const comparisonResult = await this.performComparison(
-          matchingScreen.extractedImage,
-          screenshot.image,
+          figmaBuffer,
+          screenshotBuffer,
           sensitivity,
         );
+
+        // Upload Heatmap to Cloudinary
+        let heatmapUrl: string | null = '';
+        try {
+            heatmapUrl = await this.uploadToCloudinary(comparisonResult.diffImageBuffer);
+        } catch (uploadError) {
+            this.logger.error(`Failed to upload heatmap for ${imageName}`, uploadError);
+            heatmapUrl = null; // Set to null instead of Base64 to avoid DB validation errors
+        }
 
         // Save result to DB
         await this.resultRepository.create({
@@ -112,12 +136,14 @@ export class CompareService {
           // ssImage removed per request
           diffPercent: Math.round(comparisonResult.diffScore * 100),
           resultStatus: comparisonResult.diffScore === 0 ? 1 : 0,
-          heapmapResult: comparisonResult.diffImageBuffer,
+          heapmapResult: heatmapUrl, // Save URL (or null)
         } as any);
 
+        const { diffImageBuffer, ...restResult } = comparisonResult;
         results.push({
           imageName: imageName,
-          ...comparisonResult,
+          ...restResult,
+          heatmapUrl, // Return this too
         });
 
       } catch (error) {
@@ -132,13 +158,38 @@ export class CompareService {
     return results;
   }
 
-  private async performComparison(figmaImageBuffer: Buffer, screenshotBase64: string, sensitivity = 3) {
-    // Decode user screenshot (Handle Base64 + Type)
-    const cleanBase64 = screenshotBase64.replace(/^data:image\/\w+;base64,/, '');
-    const screenshotBuffer = Buffer.from(cleanBase64, 'base64');
+  private async uploadToCloudinary(imageBuffer: Buffer): Promise<string> {
+    const CLOUD_NAME = 'compareui';
+    const UPLOAD_PRESET = 'Compare_ui';
+    const url = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`;
+
+    const formData = new FormData();
+    // Create a Blob from buffer for FormData
+    const blob = new Blob([new Uint8Array(imageBuffer)], { type: 'image/png' });
+    formData.append('file', blob, 'heatmap.png');
+    formData.append('upload_preset', UPLOAD_PRESET);
+
+    const response = await fetch(url, {
+        method: 'POST',
+        body: formData
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Cloudinary upload failed: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    return data.secure_url;
+  }
+
+  private async performComparison(figmaImageBuffer: Buffer, screenshotBuffer: Buffer, sensitivity = 3) {
+    // REFACTOR: Input is now a buffer (downloaded in caller)
+    // const cleanBase64 = screenshotBase64.replace(/^data:image\/\w+;base64,/, '');
+    // const screenshotBuffer = Buffer.from(cleanBase64, 'base64');
     
     let screenshotPng: PNG;
-    // Check for JPEG signature
+    // Check for JPEG signature (FF D8)
     if (screenshotBuffer.length > 0 && screenshotBuffer[0] === 0xFF && screenshotBuffer[1] === 0xD8) {
         const rawJpeg = jpeg.decode(screenshotBuffer, { useTArray: true });
         screenshotPng = {

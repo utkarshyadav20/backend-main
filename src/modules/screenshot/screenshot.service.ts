@@ -18,15 +18,8 @@ export class ScreenshotService {
 
         return screenshots.map(s => {
             const screen = s.get({ plain: true });
-            if (screen.screenshot) {
-                // Convert buffer/blob to base64
-                if (Buffer.isBuffer(screen.screenshot)) {
-                     screen.screenshot = `data:image/png;base64,${screen.screenshot.toString('base64')}`;
-                } else if (screen.screenshot.type === 'Buffer') {
-                     // Handle case where it might be parsed as JSON with type: 'Buffer'
-                     screen.screenshot = `data:image/png;base64,${Buffer.from(screen.screenshot.data).toString('base64')}`;
-                }
-            }
+            // REFACTOR: Screenshot is already a URL string, no conversion needed.
+            // if (screen.screenshot) { ... }
             return screen;
         });
     }

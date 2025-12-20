@@ -3,9 +3,9 @@ import { Type } from 'class-transformer';
 import { IsArray, IsNumber, IsString, ValidateNested, IsOptional } from 'class-validator';
 
 export class CompareScreenshotDto {
-  @ApiProperty({ description: 'Base64 string of the screenshot', type: String })
+  @ApiProperty({ description: 'url of the screenshot', type: String })
   @IsString()
-  image: string; // Base64 string
+  image: string; 
 
   @ApiProperty({ description: 'Name of the image/screen', type: String })
   @IsString()

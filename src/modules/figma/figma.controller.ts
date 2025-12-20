@@ -55,16 +55,15 @@ export class FigmaController {
   }
 
   @Post('upload-screen')
-  @UseInterceptors(FileInterceptor('file'))
   async uploadScreen(
-      @UploadedFile() file: any,
+      @Body('imageUrl') imageUrl: string,
       @Body('projectId') projectId: string,
       @Body('projectType') projectType: string,
       @Body('screenName') screenName: string,
   ) {
-      if (!file) {
-          throw new BadRequestException('No file uploaded');
+      if (!imageUrl) {
+          throw new BadRequestException('No imageUrl provided');
       }
-      return this.figmaService.uploadManualScreen(projectId, projectType, screenName, file.buffer);
+      return this.figmaService.uploadManualScreen(projectId, projectType, screenName, imageUrl);
   }
 }

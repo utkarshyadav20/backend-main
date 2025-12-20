@@ -7,6 +7,9 @@ import { Projects } from './projects.entity.js';
 })
 export class Result extends Model<Result> {
   @PrimaryKey
+
+
+  @PrimaryKey
   @ForeignKey(() => Projects)
   @Column({
     type: DataType.STRING,
@@ -14,6 +17,7 @@ export class Result extends Model<Result> {
   })
   projectId: string;
 
+  @PrimaryKey
   @Column({
     type: DataType.STRING,
     field: 'image_name',
@@ -36,12 +40,13 @@ export class Result extends Model<Result> {
   resultStatus: number;
 
   @Column({
-      type: DataType.BLOB,
-      field: 'heapmap_result',
-      allowNull: true,
+    type: DataType.TEXT,
+    field: 'heapmap_result',
+    allowNull: true,
   })
-  heapmapResult: any
+  heapmapResult: string;
 
+  @PrimaryKey
   @Column({
     type: DataType.STRING,
     field: 'Build_id',
