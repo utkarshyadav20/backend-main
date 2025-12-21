@@ -22,9 +22,7 @@ export class ResultService {
 
       return results.map((result) => {
         const resultJson = result.toJSON() as any;
-        if (resultJson.heapmapResult) {
-            resultJson.heapmapResult = `data:image/png;base64,${Buffer.from(resultJson.heapmapResult).toString('base64')}`;
-        }
+        // Result is now a URL, so return it directly
         return resultJson;
       });
     } catch (error) {

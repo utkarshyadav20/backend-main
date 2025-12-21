@@ -1,4 +1,4 @@
-import { Injectable, Inject, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import { Injectable, Inject, InternalServerErrorException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { FigmaScreens, Projects } from '../../shared/entity/index.js';
 import { CreateFigmaScreensDto } from './dto/figma-screen.dto.js';
 
@@ -183,6 +183,14 @@ export class FigmaService {
               figmaUrl: 'manual-upload'
           } as any);
       }
+  }
+
+  async extractImageFromUrl(url: string): Promise<string> {
+      const imageUrl = await this.fetchImageFromFigmaUrl(url);
+      if (!imageUrl) {
+          throw new BadRequestException('Could not extract image from Figma URL. Make sure it points to a specific frame (node-id).');
+      }
+      return imageUrl;
   }
 
   private async fetchImageFromFigmaUrl(url: string): Promise<string | null> {

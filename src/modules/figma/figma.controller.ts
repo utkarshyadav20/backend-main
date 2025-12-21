@@ -66,4 +66,25 @@ export class FigmaController {
       }
       return this.figmaService.uploadManualScreen(projectId, projectType, screenName, imageUrl);
   }
+  @Post('extract-image')
+  async extractImage(
+      @Body('url') url: string,
+      @Body('projectId') projectId?: string,
+      @Body('projectType') projectType?: string,
+      @Body('screenName') screenName?: string,
+  ) {
+      if (!url) {
+          throw new BadRequestException('URL is required');
+      }
+      const imageUrl = await this.figmaService.extractImageFromUrl(url);
+
+      if (projectId && projectType) {
+          // If project context provided, save it immediately (like manual upload)
+          const name = screenName || 'Figma Screen'; 
+          const savedScreen = await this.figmaService.uploadManualScreen(projectId, projectType, name, imageUrl);
+          return { imageUrl, savedScreen };
+      }
+
+      return { imageUrl };
+  }
 }
