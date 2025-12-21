@@ -12,26 +12,26 @@ export class Screenshot extends Model<Screenshot> {
     type: DataType.STRING,
     field: 'Project_id',
   })
-  projectId: string;
+  declare projectId: string;
 
   @Column({
     type: DataType.STRING,
     field: 'Build_id',
     primaryKey: true,
   })
-  buildId: string;
+  declare buildId: string;
 
   @Column({
     type: DataType.TEXT,
     field: 'Screenshot',
   })
-  screenshot: string;
+  declare screenshot: string;
 
   @Column({
     type: DataType.STRING,
     field: 'Image_name',
     primaryKey: true,
   })
-  imageName: string;
+  declare imageName: string;
 
 }

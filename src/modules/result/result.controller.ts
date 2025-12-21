@@ -12,4 +12,14 @@ export class ResultController {
   ) {
     return this.resultService.getResults(projectId, buildId);
   }
+
+  @Get('details')
+  async getDetailedResult(
+    @Query('projectId') projectId: string,
+    @Query('buildId') buildId: string,
+    @Query('screenName') screenName: string,
+    @Query('projectType') projectType?: string,
+  ) {
+    return this.resultService.getDetailedResult(projectId, buildId, screenName, projectType);
+  }
 }

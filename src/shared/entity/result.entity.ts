@@ -15,7 +15,7 @@ export class Result extends Model<Result> {
     type: DataType.STRING,
     field: 'Project_id',
   })
-  projectId: string;
+  declare projectId: string;
 
   @PrimaryKey
   @Column({
@@ -23,28 +23,28 @@ export class Result extends Model<Result> {
     field: 'image_name',
     allowNull: true,
   })
-  imageName: string;
+  declare imageName: string;
 
   @Column({
       type: DataType.INTEGER,
       field: 'diff_percent',
       allowNull: true,
   })
-  diffPercent: number;
+  declare diffPercent: number;
 
   @Column({
       type: DataType.INTEGER,
       field: 'result_status',
       allowNull: true,
   })
-  resultStatus: number;
+  declare resultStatus: number;
 
   @Column({
     type: DataType.TEXT,
     field: 'heapmap_result',
     allowNull: true,
   })
-  heapmapResult: string;
+  declare heapmapResult: string;
 
   @PrimaryKey
   @Column({
@@ -52,8 +52,8 @@ export class Result extends Model<Result> {
     field: 'Build_id',
     allowNull: true,
   })
-  buildId: string;
+  declare buildId: string;
 
   @BelongsTo(() => Projects)
-  project: Projects;
+  declare project: Projects;
 }

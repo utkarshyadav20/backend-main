@@ -1,5 +1,5 @@
 import { Injectable, Inject, Logger } from '@nestjs/common';
-import { Result } from '../../shared/entity/index.js';
+import { Result, FigmaScreens, Screenshot } from '../../shared/entity/index.js';
 
 @Injectable()
 export class ResultService {
@@ -8,6 +8,10 @@ export class ResultService {
   constructor(
     @Inject('RESULT_REPOSITORY')
     private resultRepository: typeof Result,
+    @Inject('FIGMA_SCREENS_REPOSITORY')
+    private figmaScreensRepository: typeof FigmaScreens,
+    @Inject('SCREENSHOT_REPOSITORY')
+    private screenshotRepository: typeof Screenshot,
   ) {}
 
   async getResults(projectId: string, buildId: string) {
@@ -22,12 +26,70 @@ export class ResultService {
 
       return results.map((result) => {
         const resultJson = result.toJSON() as any;
-        // Result is now a URL, so return it directly
         return resultJson;
       });
     } catch (error) {
       this.logger.error('Error fetching results', error);
       throw error;
     }
+  }
+
+  async getDetailedResult(projectId: string, buildId: string, screenName: string, projectType?: string) {
+     try {
+       this.logger.log(`Fetching detailed result for ${projectId}, ${buildId}, ${screenName}`);
+
+       // 1. Fetch Result (Comparison Data)
+       const result = await this.resultRepository.findOne({
+         where: { projectId, buildId, imageName: screenName }
+       });
+
+       // 2. Fetch Actual Screenshot (Build Image)
+       const screenshot = await this.screenshotRepository.findOne({
+         where: { projectId, buildId, imageName: screenName }
+       });
+       this.logger.log(`Screenshot found: ${!!screenshot} for ${screenName}`);
+       if (!screenshot) {
+           const allScreenshots = await this.screenshotRepository.findAll({ where: { projectId, buildId } });
+           this.logger.log(`Available Screenshots for build ${buildId}: ${allScreenshots.map(s => s.imageName).join(', ')}`);
+       }
+
+       // 3. Fetch Baseline Image (Figma Screen)
+       const figmaQuery: any = { projectId, screenName };
+       if (projectType) {
+         figmaQuery.projectType = projectType; // Ensure casing matches DB
+       }
+       this.logger.log(`Figma Query: ${JSON.stringify(figmaQuery)}`);
+       const figmaScreen = await this.figmaScreensRepository.findOne({
+          where: figmaQuery
+       });
+       this.logger.log(`Figma Screen found: ${!!figmaScreen}`);
+       if (!figmaScreen) {
+           const allFigma = await this.figmaScreensRepository.findAll({ where: { projectId } });
+           this.logger.log(`Available Figma Screens for project ${projectId}: ${allFigma.map(f => `${f.screenName} (${f.projectType})`).join(', ')}`);
+       }
+
+       return {
+         // Identifiers
+         projectId,
+         buildId,
+         screenName,
+         
+         // Result Data
+         resultStatus: result?.resultStatus ?? 0,
+         diffPercent: result?.diffPercent ?? 0,
+         diffImageUrl: result?.heapmapResult || null, // Note: field is typo'd in entity as heapmapResult or similar
+         
+         // Images
+         baselineImageUrl: figmaScreen?.extractedImage || null,
+         actualImageUrl: screenshot?.screenshot || null,
+         
+         // Other metadata if needed
+         createdAt: result?.createdAt || new Date().toISOString()
+       };
+
+     } catch (e) { 
+        this.logger.error('Error fetching detailed result', e);
+        throw e; 
+     }
   }
 }
