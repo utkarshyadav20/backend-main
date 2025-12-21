@@ -29,4 +29,10 @@ export const databaseConfig: IDatabaseConfigAttributes = isSupabase
         : 5432,
     };
 
+console.log('Database Config:', {
+  ...databaseConfig,
+  password: databaseConfig.password ? '******' : undefined,
+  dialectOptions: databaseConfig.dialectOptions ? { ...databaseConfig.dialectOptions, ssl: '...' } : undefined
+});
+
 export default databaseConfig;
