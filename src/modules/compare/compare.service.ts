@@ -1,7 +1,7 @@
 import { Injectable, Inject, Logger } from '@nestjs/common';
 import { FigmaScreens, Result, Build, Screenshot } from '../../shared/entity/index';
 import { CompareScreenshotDto } from './dto/compare-screenshot.dto';
-import pixelmatch from 'pixelmatch';
+// import pixelmatch from 'pixelmatch';
 import { PNG } from 'pngjs';
 import jpeg from 'jpeg-js';
 import { Buffer } from 'node:buffer';
@@ -221,6 +221,7 @@ export class CompareService {
     }[sensitivity] || 0.5;
 
     const diffPng = new PNG({ width, height });
+    const { default: pixelmatch } = await import('pixelmatch');
     const diffPixels = pixelmatch(
         resizedScreenshot.data,
         resizedFigma.data,
