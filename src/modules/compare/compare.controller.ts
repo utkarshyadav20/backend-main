@@ -11,6 +11,7 @@ export class CompareController {
   @Post('run')
   @ApiOperation({ summary: 'Run screenshot comparison' })
   @ApiQuery({ name: 'sensitivity', required: false, type: String, description: 'Comparison sensitivity (e.g. 1x, 2x, 3x)' })
+  @ApiQuery({ name: 'minScore', required: false, type: String, description: 'Minimum score percentage (1-100)' })
   @ApiQuery({ name: 'buildId', required: false, type: String, description: 'Build ID (optional) - if not passed, one will be created' })
   @ApiResponse({ status: 200, description: 'Comparison successful' })
   @ApiResponse({ status: 400, description: 'Bad Request' })
@@ -25,6 +26,7 @@ export class CompareController {
       bodyDto.screenshots,
       buildId,
       queryDto.sensitivity ? parseInt(queryDto.sensitivity) : undefined,
+      queryDto.minScore ? parseInt(queryDto.minScore) : undefined,
     );
   }
 }

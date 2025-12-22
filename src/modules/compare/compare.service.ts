@@ -21,7 +21,7 @@ export class CompareService {
     private screenshotRepository: typeof Screenshot,
   ) {}
 
-  async compareScreens(projectId: string, projectType: string, screenshots: CompareScreenshotDto[], buildIdParam?: string, sensitivity?: number) {
+  async compareScreens(projectId: string, projectType: string, screenshots: CompareScreenshotDto[], buildIdParam?: string, sensitivity?: number, minScore?: number) {
     const results: any[] = [];
     
     // 1. Handle Build ID (use passed one OR generate new one)
@@ -128,6 +128,18 @@ export class CompareService {
             heatmapUrl = null; // Set to null instead of Base64 to avoid DB validation errors
         }
 
+        // Calculate Result Status based on minScore or default threshold
+        // minScore is percentage (1-100). If minScore is 95, approved diff is 5% (0.05).
+        // If diffScore <= allowedDiff, then PASS (1). Else FAIL (0).
+        let resultStatus = 0;
+        if (minScore !== undefined && minScore !== null) {
+            const allowedDiff = (100 - minScore) / 100;
+            resultStatus = comparisonResult.diffScore <= allowedDiff ? 1 : 0;
+        } else {
+             // Default logic: < 0.07 (7%) is PASS
+            resultStatus = comparisonResult.diffScore < 0.07 ? 1 : 0;
+        }
+
         // Save result to DB
         await this.resultRepository.create({
           projectId,
@@ -135,7 +147,7 @@ export class CompareService {
           imageName: imageName,
           // ssImage removed per request
           diffPercent: Math.round(comparisonResult.diffScore * 100),
-          resultStatus: comparisonResult.diffScore === 0 ? 1 : 0,
+          resultStatus: resultStatus,
           heapmapResult: heatmapUrl, // Save URL (or null)
         } as any);
 

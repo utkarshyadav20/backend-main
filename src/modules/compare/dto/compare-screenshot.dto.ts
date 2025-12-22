@@ -23,8 +23,14 @@ export class CompareQueryDto {
 
   @ApiProperty({ description: 'Sensitivity level (optional)', type: String, required: false })
   @IsString()
+  @IsString()
   @IsOptional()
   sensitivity?: string;
+
+  @ApiProperty({ description: 'Minimum score percentage (1-100)', type: String, required: false })
+  @IsString()
+  @IsOptional()
+  minScore?: string;
 }
 
 export class CompareBodyDto {
