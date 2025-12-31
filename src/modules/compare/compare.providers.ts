@@ -1,4 +1,4 @@
-import { FigmaScreens, Result, Build, Screenshot } from '../../shared/entity/index';
+import { FigmaScreens, Result, Build, Screenshot, ModelResult } from '../../shared/entity/index';
 
 export const compareProviders = [
   {
@@ -16,5 +16,9 @@ export const compareProviders = [
   {
     provide: 'SCREENSHOT_REPOSITORY',
     useValue: Screenshot,
+  },
+  {
+    provide: 'MODEL_RESULT_REPOSITORY',
+    useValue: ModelResult,
   },
 ];

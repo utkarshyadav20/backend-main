@@ -1,5 +1,6 @@
 import { Injectable, Inject, Logger } from '@nestjs/common';
-import { Result, FigmaScreens, Screenshot } from '../../shared/entity/index.js';
+import { Result, FigmaScreens, Screenshot, ModelResult } from '../../shared/entity/index.js';
+import { StoreModelResultDto } from './dto/model-result.dto.js';
 
 @Injectable()
 export class ResultService {
@@ -12,6 +13,8 @@ export class ResultService {
     private figmaScreensRepository: typeof FigmaScreens,
     @Inject('SCREENSHOT_REPOSITORY')
     private screenshotRepository: typeof Screenshot,
+    @Inject('MODEL_RESULT_REPOSITORY')
+    private modelResultRepository: typeof ModelResult,
   ) {}
 
   async getResults(projectId: string, buildId: string) {
@@ -78,6 +81,7 @@ export class ResultService {
          resultStatus: result?.resultStatus ?? 0,
          diffPercent: result?.diffPercent ?? 0,
          diffImageUrl: result?.heapmapResult || null, // Note: field is typo'd in entity as heapmapResult or similar
+         coordinates: result?.coordinates || null,
          
          // Images
          baselineImageUrl: figmaScreen?.extractedImage || null,
@@ -92,4 +96,46 @@ export class ResultService {
         throw e; 
      }
   }
+
+  async getModelResult(projectId: string, buildId: string, imageName: string, projectType: string) {
+    try {
+      this.logger.log(`Fetching model result for projectId: ${projectId}, buildId: ${buildId}, imageName: ${imageName}`);
+      
+      const modelResult = await this.modelResultRepository.findOne({
+        where: {
+          projectId,
+          buildId,
+          imageName,
+          projectType
+        }
+      });
+
+      return modelResult;
+    } catch (error) {
+      this.logger.error('Error fetching model result', error);
+      throw error;
+    }
+  }
+
+//   async storeModelResult(storeModelResultDto: StoreModelResultDto) {
+//     try {
+//       this.logger.log(`Storing model result for projectId: ${storeModelResultDto.projectId}, buildId: ${storeModelResultDto.buildId}`);
+      
+//       const { projectId, buildId, projectType, data } = storeModelResultDto;
+//       const recordsToCreate = data.map(item => ({
+//         projectId,
+//         buildId,
+//         projectType,
+//         imageName: item.imageName,
+//         coordsVsText: item.analysis,
+//       }));
+
+//       await this.modelResultRepository.bulkCreate(recordsToCreate as any);
+      
+//       return { success: true, message: 'Model results stored successfully' };
+//     } catch (error) {
+//       this.logger.error('Error storing model results', error);
+//       throw error;
+//     }
+//   }
 }

@@ -46,6 +46,13 @@ export class Result extends Model<Result> {
   })
   declare heapmapResult: string;
 
+  @Column({
+    type: DataType.JSONB,
+    field: 'coordinates',
+    allowNull: true,
+  })
+  declare coordinates: any;
+
   @PrimaryKey
   @Column({
     type: DataType.STRING,

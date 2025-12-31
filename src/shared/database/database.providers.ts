@@ -2,7 +2,7 @@ import { Sequelize, SequelizeOptions } from 'sequelize-typescript';
 import { SEQUELIZE } from '../utils/constant/sequelize/sequelize-constant.js';
 import databaseConfig from './database.config.js';
 import { IDatabaseConfigAttributes } from './interfaces/dbConfig.interface.js';
-import { Projects, FigmaScreens, Result, Build, Screenshot } from '../entity/index.js';
+import { Projects, FigmaScreens, Result, Build, Screenshot, ModelResult } from '../entity/index.js';
 
 export const databaseProviders = [
   {
@@ -12,7 +12,7 @@ export const databaseProviders = [
       const sequelize = config.url
         ? new Sequelize(config.url, config as SequelizeOptions)
         : new Sequelize(config as SequelizeOptions);
-      sequelize.addModels([Projects, FigmaScreens, Result, Build, Screenshot]);
+      sequelize.addModels([Projects, FigmaScreens, Result, Build, Screenshot, ModelResult]);
       try {
         await sequelize.authenticate();
         // await sequelize.sync({ alter: false });

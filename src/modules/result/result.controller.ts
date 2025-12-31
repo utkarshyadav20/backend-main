@@ -1,5 +1,6 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Query, Post, Body } from '@nestjs/common';
 import { ResultService } from './result.service';
+import { StoreModelResultDto } from './dto/model-result.dto.js';
 
 @Controller('result')
 export class ResultController {
@@ -22,4 +23,17 @@ export class ResultController {
   ) {
     return this.resultService.getDetailedResult(projectId, buildId, screenName, projectType);
   }
+  @Get('model-result')
+  async getModelResult(
+    @Query('projectId') projectId: string,
+    @Query('buildId') buildId: string,
+    @Query('imageName') imageName: string,
+    @Query('projectType') projectType: string,
+  ) {
+    return this.resultService.getModelResult(projectId, buildId, imageName, projectType);
+  }
+  // @Post('store-model-result')
+  // async storeModelResult(@Body() storeModelResultDto: StoreModelResultDto) {
+  //   return this.resultService.storeModelResult(storeModelResultDto);
+  // }
 }

@@ -1,10 +1,12 @@
 import { Injectable, Inject, Logger } from '@nestjs/common';
-import { FigmaScreens, Result, Build, Screenshot } from '../../shared/entity/index';
+import { FigmaScreens, Result, Build, Screenshot, ModelResult } from '../../shared/entity/index';
 import { CompareScreenshotDto } from './dto/compare-screenshot.dto';
 // import pixelmatch from 'pixelmatch';
 import { PNG } from 'pngjs';
 import jpeg from 'jpeg-js';
 import { Buffer } from 'node:buffer';
+import { HttpService } from '@nestjs/axios';
+import { lastValueFrom } from 'rxjs';
 
 @Injectable()
 export class CompareService {
@@ -19,6 +21,9 @@ export class CompareService {
     private buildRepository: typeof Build,
     @Inject('SCREENSHOT_REPOSITORY')
     private screenshotRepository: typeof Screenshot,
+    @Inject('MODEL_RESULT_REPOSITORY')
+    private modelResultRepository: typeof ModelResult,
+    private readonly httpService: HttpService,
   ) {}
 
   async compareScreens(projectId: string, projectType: string, screenshots: CompareScreenshotDto[], buildIdParam?: string, sensitivity?: number, minScore?: number) {
@@ -149,13 +154,20 @@ export class CompareService {
           diffPercent: Math.round(comparisonResult.diffScore * 100),
           resultStatus: resultStatus,
           heapmapResult: heatmapUrl, // Save URL (or null)
+          coordinates: {
+              boxes: comparisonResult.boxes,
+              counts: comparisonResult.counts,
+              dimensions: comparisonResult.dimensions
+          }
         } as any);
 
         const { diffImageBuffer, ...restResult } = comparisonResult;
         results.push({
           imageName: imageName,
           ...restResult,
-          heatmapUrl, // Return this too
+          heatmapUrl, 
+          screenshotUrl,
+          figmaUrl,
         });
 
       } catch (error) {
@@ -167,7 +179,70 @@ export class CompareService {
       }
     }
 
+    // Trigger N8N Webhook with gathered results
+    if (results.length > 0) {
+        this.triggerN8nWebhook(results, projectId, buildId, projectType).catch(err => {
+            this.logger.error('Failed to trigger background N8N webhook', err);
+        });
+    }
+
     return results;
+  }
+
+  private async triggerN8nWebhook(results: any[], projectId: string, buildId: string, projectType: string) {
+      let webhookUrl = process.env.N8N_WEBHOOK_URL;
+      if (!webhookUrl) {
+          this.logger.warn('N8N_WEBHOOK_URL not set, skipping webhook trigger');
+          return;
+      }
+      
+      // Append query parameters
+      const separator = webhookUrl.includes('?') ? '&' : '?';
+      webhookUrl = `${webhookUrl}${separator}projectId=${projectId}&buildId=${buildId}&projectType=${projectType}`;
+
+      const imagesToanalyze = results.filter(r => !r.error).map(result => ({
+          imageName: result.imageName,
+          mismatchPercent: result.diffScore !== undefined ? (result.diffScore * 100).toFixed(2) : '0',
+          originalImageUrl: result.figmaUrl || '', 
+          screenshot: result.screenshotUrl || '',
+          differenceImageUrl: result.heatmapUrl,
+          boxed_coordinats: {
+              boxes: result.boxes,
+              counts: result.counts,
+              dimensions: result.dimensions
+          },
+      }));
+
+      if (imagesToanalyze.length === 0) return;
+
+      this.logger.log(`Triggering n8n webhook for ${imagesToanalyze.length} images`);
+      
+      try {
+          const response = await lastValueFrom(this.httpService.post(webhookUrl, { imagesToanalyze }));
+          this.logger.log('n8n webhook triggered successfully');
+
+          // Process and store the response
+          if (response.data && response.data.data) {
+              const webhookData = response.data.data;
+              this.logger.log(`Received ${webhookData.length} analysis results from webhook`);
+
+              const recordsToCreate = webhookData.map((item: any) => ({
+                  projectId,
+                  buildId,
+                  projectType,
+                  imageName: item.imageName,
+                  coordsVsText: item.analysis,
+              }));
+
+              await this.modelResultRepository.bulkCreate(recordsToCreate);
+              this.logger.log('Model results stored successfully from webhook response');
+          }
+
+      } catch (error) {
+          this.logger.error('Error triggering n8n webhook or storing results', error);
+          // Don't throw logic error here to avoid failing the main comparison if webhook/storage fails, 
+          // but log it strictly.
+      }
   }
 
   private async uploadToCloudinary(imageBuffer: Buffer): Promise<string> {
@@ -245,12 +320,155 @@ export class CompareService {
 
     const diffScore = diffPixels / (width * height);
     const diffImageBuffer = PNG.sync.write(diffPng);
+    
+    // Analyze diff for boxes
+    const analysis = this.analyzeDiff(diffPng);
 
     return {
         diffScore,
         diffImageBuffer,
-        matched: diffPixels === 0
+        matched: diffPixels === 0,
+        ...analysis // Include boxes, counts, dimensions
     };
+  }
+
+  private analyzeDiff(diffPng: PNG) {
+      const { width, height, data } = diffPng;
+      
+      // Grid configuration
+      const GRID_SIZE = 20; // 20x20 pixels blocks
+      const rows = Math.ceil(height / GRID_SIZE);
+      const cols = Math.ceil(width / GRID_SIZE);
+      
+      // 2D array to track active blocks
+      const grid = Array(rows).fill(null).map(() => 
+          Array(cols).fill(null).map(() => ({ active: false, pixelCount: 0 }))
+      );
+
+      // 1. Scan pixels and populate grid
+      for (let y = 0; y < height; y++) {
+          for (let x = 0; x < width; x++) {
+              const i = (y * width + x) * 4;
+              const r = data[i];
+              const g = data[i + 1];
+              const b = data[i + 2];
+              
+              // Detect Red diff pixels (Pixelmatch default: 255, 0, 0)
+              // We use a threshold to be safe
+              const isDiff = r > 150 && g < 100 && b < 100;
+              
+              if (isDiff) {
+                  const gy = Math.floor(y / GRID_SIZE);
+                  const gx = Math.floor(x / GRID_SIZE);
+                  // Boundary check
+                  if (gy < rows && gx < cols) {
+                    grid[gy][gx].pixelCount++;
+                  }
+              }
+          }
+      }
+
+      // 2. Mark blocks as active if they have enough diff pixels
+      for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+              // If density in block > 2% roughly (20*20*0.02 = 8 pixels)
+              if (grid[r][c].pixelCount > 5) {
+                  grid[r][c].active = true;
+              }
+          }
+      }
+
+      // 3. Simple Connected Components on Grid
+      const visited = Array(rows).fill(false).map(() => Array(cols).fill(false));
+      const foundBoxes: any[] = [];
+
+      for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+              if (grid[r][c].active && !visited[r][c]) {
+                  // Start BFS for a new component
+                  const queue = [{ r, c }];
+                  visited[r][c] = true;
+                  
+                  let minR = r, maxR = r;
+                  let minC = c, maxC = c;
+                  let totalPixels = 0;
+
+                  while (queue.length > 0) {
+                      const { r: cr, c: cc } = queue.shift()!;
+                      
+                      minR = Math.min(minR, cr);
+                      maxR = Math.max(maxR, cr);
+                      minC = Math.min(minC, cc);
+                      maxC = Math.max(maxC, cc);
+                      totalPixels += grid[cr][cc].pixelCount;
+
+                      // Check 4 neighbors
+                      const neighbors = [
+                          { nr: cr - 1, nc: cc },
+                          { nr: cr + 1, nc: cc },
+                          { nr: cr, nc: cc - 1 },
+                          { nr: cr, nc: cc + 1 },
+                          // Diagonals
+                          { nr: cr - 1, nc: cc - 1 },
+                          { nr: cr - 1, nc: cc + 1 },
+                          { nr: cr + 1, nc: cc - 1 },
+                          { nr: cr + 1, nc: cc + 1 },
+                      ];
+
+                      for (const { nr, nc } of neighbors) {
+                          if (
+                              nr >= 0 && nr < rows &&
+                              nc >= 0 && nc < cols &&
+                              !visited[nr][nc] &&
+                              grid[nr][nc].active
+                          ) {
+                              visited[nr][nc] = true;
+                              queue.push({ r: nr, c: nc });
+                          }
+                      }
+                  }
+
+                  // Create Box
+                  const bx = minC * GRID_SIZE;
+                  const by = minR * GRID_SIZE;
+                  const bw = (maxC - minC + 1) * GRID_SIZE;
+                  const bh = (maxR - minR + 1) * GRID_SIZE;
+                  
+                  const area = bw * bh;
+                  const density = totalPixels / area;
+                  
+                  let severity = 'Low';
+                  if (density > 0.3) severity = 'Major'; // >30% red pixels
+                  else if (density > 0.05) severity = 'Medium';
+                  
+                  // Only add significant regions
+                  if (bw > 10 && bh > 10) {
+                      foundBoxes.push({
+                          id: `${bx}-${by}`,
+                          x: bx,
+                          y: by,
+                          width: bw,
+                          height: bh,
+                          density,
+                          severity,
+                          pixelCount: totalPixels
+                      });
+                  }
+              }
+          }
+      }
+
+      const counts = {
+        Major: foundBoxes.filter(b => b.severity === 'Major').length,
+        Medium: foundBoxes.filter(b => b.severity === 'Medium').length,
+        Low: foundBoxes.filter(b => b.severity === 'Low').length,
+      };
+
+      return {
+          boxes: foundBoxes,
+          counts,
+          dimensions: { width, height }
+      };
   }
 
   private resizeImage(png: PNG, targetWidth: number, targetHeight: number): PNG {
