@@ -1,5 +1,5 @@
 import { Injectable, Inject, Logger } from '@nestjs/common';
-import { FigmaScreens, Result, Build, Screenshot, ModelResult } from '../../shared/entity/index';
+import { FigmaScreens, Result, Build, Screenshot, ModelResult, ResultStatus } from '../../shared/entity/index';
 import { CompareScreenshotDto } from './dto/compare-screenshot.dto';
 // import pixelmatch from 'pixelmatch';
 import { PNG } from 'pngjs';
@@ -89,86 +89,162 @@ export class CompareService {
     }
 
     // 4. Compare logic
-    for (const screenshot of screenshots) {
-      const imageName = screenshot.imageName.replace(/\.[^/.]+$/, "");
+    // 4. Compare logic
+    // Fetch ALL Figma screens for the project first
+    const figmaScreens = await this.figmaScreensRepository.findAll({
+        where: { projectId, projectType }
+    });
+    
+    // Create a Set of all unique names (from Figma and Screenshots)
+    const uniqueNames = new Set<string>();
+    
+    // Convert screenshots array to a Map for easy lookup
+    const screenshotMap = new Map<string, any>();
+    for (const s of screenshots) {
+        // Strip extension to get clean name
+        const cleanName = s.imageName.replace(/\.[^/.]+$/, ""); 
+        uniqueNames.add(cleanName);
+        screenshotMap.set(cleanName, s);
+    }
+    
+    // Add all Figma screen names to the Set and Map for lookup
+    const figmaMap = new Map<string, any>();
+    for (const f of figmaScreens) {
+        uniqueNames.add(f.screenName);
+        figmaMap.set(f.screenName, f);
+    }
+
+    for (const imageName of uniqueNames) {
       try {
         console.log(projectId, projectType, imageName);
-        const matchingScreen = await this.figmaScreensRepository.findOne({
-          where: {
-            projectId, // Note: FigmaScreens entity likely needs string projectId too if not updated, assuming it handles it
-            projectType,
-            screenName: imageName,
-          },
-        });
 
-        if (!matchingScreen || !matchingScreen.extractedImage) {
-          this.logger.warn(`No matching Figma screen found for ${imageName}`);
-          continue;
-        }
-
-        // REFACTOR: Screenshot is now a URL. Download it.
-        const screenshotUrl = screenshot.image; // Assuming DTO validation passes URLstring
-        const screenshotResponse = await fetch(screenshotUrl);
-        if (!screenshotResponse.ok) throw new Error(`Failed to fetch screenshot from ${screenshotUrl}`);
-        const screenshotBuffer = Buffer.from(await screenshotResponse.arrayBuffer());
+        const screenshot = screenshotMap.get(imageName);
+        const matchingScreen = figmaMap.get(imageName);
         
-        // REFACTOR: Figma image is now a URL. Download it.
-        const figmaUrl = matchingScreen.extractedImage;
-        const figmaResponse = await fetch(figmaUrl);
-        if (!figmaResponse.ok) throw new Error(`Failed to fetch figma image from ${figmaUrl}`);
-        const figmaBuffer = Buffer.from(await figmaResponse.arrayBuffer());
-
-        const comparisonResult = await this.performComparison(
-          figmaBuffer,
-          screenshotBuffer,
-          sensitivity,
-        );
-
-        // Upload Heatmap to Cloudinary
-        let heatmapUrl: string | null = '';
-        try {
-            heatmapUrl = await this.uploadToCloudinary(comparisonResult.diffImageBuffer);
-        } catch (uploadError) {
-            this.logger.error(`Failed to upload heatmap for ${imageName}`, uploadError);
-            heatmapUrl = null; // Set to null instead of Base64 to avoid DB validation errors
-        }
-
-        // Calculate Result Status based on minScore or default threshold
-        // minScore is percentage (1-100). If minScore is 95, approved diff is 5% (0.05).
-        // If diffScore <= allowedDiff, then PASS (1). Else FAIL (0).
-        let resultStatus = 0;
-        if (minScore !== undefined && minScore !== null) {
-            const allowedDiff = (100 - minScore) / 100;
-            resultStatus = comparisonResult.diffScore <= allowedDiff ? 1 : 0;
-        } else {
-             // Default logic: < 0.07 (7%) is PASS
-            resultStatus = comparisonResult.diffScore < 0.07 ? 1 : 0;
-        }
-
-        // Save result to DB
-        await this.resultRepository.create({
-          projectId,
-          buildId, // Link to Build
-          imageName: imageName,
-          // ssImage removed per request
-          diffPercent: Math.round(comparisonResult.diffScore * 100),
-          resultStatus: resultStatus,
-          heapmapResult: heatmapUrl, // Save URL (or null)
-          coordinates: {
-              boxes: comparisonResult.boxes,
-              counts: comparisonResult.counts,
-              dimensions: comparisonResult.dimensions
-          }
-        } as any);
-
-        const { diffImageBuffer, ...restResult } = comparisonResult;
-        results.push({
-          imageName: imageName,
-          ...restResult,
-          heatmapUrl, 
-          screenshotUrl,
-          figmaUrl,
+        // Find existing result record
+        let resultRecord = await this.resultRepository.findOne({
+            where: { projectId, buildId, imageName }
         });
+        
+        // CASE 1: Screenshot exists
+        if (screenshot) {
+             // If matching Figma screen missing -> ERROR
+            if (!matchingScreen || !matchingScreen.extractedImage) {
+                 this.logger.warn(`No matching Figma screen found for ${imageName}`);
+                 
+                 const resultData = {
+                      projectId,
+                      buildId,
+                      imageName,
+                      resultStatus: ResultStatus.ERROR, // Mark as ERROR
+                      diffPercent: 0,
+                      heapmapResult: null,
+                      coordinates: null 
+                 };
+                 
+                 if (resultRecord) {
+                    await resultRecord.update(resultData as any);
+                 } else {
+                    await this.resultRepository.create(resultData as any);
+                 }
+                 
+                 continue; // Skip comparison
+            }
+            
+            // If Figma screen exists -> Proceed with comparison
+            
+            // Set IN_PROGRESS
+            if (resultRecord) {
+                await resultRecord.update({ resultStatus: ResultStatus.IN_PROGRESS });
+            } else {
+                 resultRecord = await this.resultRepository.create({
+                    projectId,
+                    buildId,
+                    imageName,
+                    resultStatus: ResultStatus.IN_PROGRESS
+                } as any);
+            }
+
+            // REFACTOR: Screenshot is now a URL. Download it.
+            const screenshotUrl = screenshot.image; 
+            const screenshotResponse = await fetch(screenshotUrl);
+            if (!screenshotResponse.ok) throw new Error(`Failed to fetch screenshot from ${screenshotUrl}`);
+            const screenshotBuffer = Buffer.from(await screenshotResponse.arrayBuffer());
+            
+            // REFACTOR: Figma image is now a URL. Download it.
+            const figmaUrl = matchingScreen.extractedImage;
+            const figmaResponse = await fetch(figmaUrl);
+            if (!figmaResponse.ok) throw new Error(`Failed to fetch figma image from ${figmaUrl}`);
+            const figmaBuffer = Buffer.from(await figmaResponse.arrayBuffer());
+    
+            const comparisonResult = await this.performComparison(
+              figmaBuffer,
+              screenshotBuffer,
+              sensitivity,
+            );
+    
+            // Upload Heatmap to Cloudinary
+            let heatmapUrl: string | null = '';
+            try {
+                heatmapUrl = await this.uploadToCloudinary(comparisonResult.diffImageBuffer);
+            } catch (uploadError) {
+                this.logger.error(`Failed to upload heatmap for ${imageName}`, uploadError);
+                heatmapUrl = null; 
+            }
+    
+            // Calculate Result Status based on minScore or default threshold
+            let resultStatus = ResultStatus.FAIL;
+            if (minScore !== undefined && minScore !== null) {
+                const allowedDiff = (100 - minScore) / 100;
+                resultStatus = comparisonResult.diffScore <= allowedDiff ? ResultStatus.PASS : ResultStatus.FAIL;
+            } else {
+                 // Default logic: < 0.07 (7%) is PASS
+                resultStatus = comparisonResult.diffScore < 0.07 ? ResultStatus.PASS : ResultStatus.FAIL;
+            }
+    
+            // Save result to DB using the existing record
+            const resultData = {
+              projectId,
+              buildId,
+              imageName,
+              diffPercent: Math.round(comparisonResult.diffScore * 100),
+              resultStatus: resultStatus,
+              heapmapResult: heatmapUrl,
+              coordinates: {
+                  boxes: comparisonResult.boxes,
+                  counts: comparisonResult.counts,
+                  dimensions: comparisonResult.dimensions
+              }
+            };
+    
+            if (resultRecord) {
+                await resultRecord.update(resultData as any);
+            } else {
+                await this.resultRepository.create(resultData as any);
+            }
+    
+            const { diffImageBuffer, ...restResult } = comparisonResult;
+            results.push({
+              imageName: imageName,
+              ...restResult,
+              heatmapUrl, 
+              screenshotUrl,
+              figmaUrl,
+            });
+
+        } else {
+            // CASE 2: Screenshot MISSING (only in Figma)
+            // Ensure a result row exists, likely ON_HOLD or similar if not found
+             if (!resultRecord) {
+                 await this.resultRepository.create({
+                    projectId,
+                    buildId,
+                    imageName,
+                    resultStatus: ResultStatus.ON_HOLD // Or keep null/default
+                } as any);
+             }
+             // If record exists, we leave it be (it might be On Hold from previous steps)
+        }
 
       } catch (error) {
         this.logger.error(`Error comparing screen ${imageName}`, error);

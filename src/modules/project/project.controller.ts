@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Query, Delete, Param } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { ProjectService } from './project.service.js';
 import { ProjectDto } from './dto/project.dto.js';
@@ -15,8 +15,13 @@ export class ProjectController {
   }
 
   @Post()
-  async create(@Body() createProjectDto: ProjectDto): Promise<ProjectDto> {
-    return this.projectService.create(createProjectDto);
+  async create(@Body() projectDto: ProjectDto): Promise<ProjectDto> {
+    return this.projectService.create(projectDto);
+  }
+
+  @Delete(':id')
+  delete(@Param('id') id: string) {
+    return this.projectService.deleteProject(id);
   }
 
   @Post('build')

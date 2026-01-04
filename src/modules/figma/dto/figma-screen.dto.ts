@@ -1,4 +1,4 @@
-import { IsArray, IsNumber, IsString, ValidateNested } from 'class-validator';
+import { IsArray, IsString, ValidateNested, IsOptional } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class FigmaScreenDataDto {
@@ -15,6 +15,10 @@ export class FigmaScreenDataDto {
 export class CreateFigmaScreensDto {
   @IsString()
   project_id: string;
+
+  @IsOptional()
+  @IsString()
+  build_id?: string;
 
   @IsArray()
   @ValidateNested({ each: true })

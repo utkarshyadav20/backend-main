@@ -1,6 +1,14 @@
 import { BelongsTo, Column, DataType, ForeignKey, Model, PrimaryKey, Table } from 'sequelize-typescript';
 import { Projects } from './projects.entity.js';
 
+export enum ResultStatus {
+  PASS = 'pass',
+  FAIL = 'fail',
+  ERROR = 'error',
+  IN_PROGRESS = 'inProgress',
+  ON_HOLD = 'On Hold',
+}
+
 @Table({
   tableName: 'Result',
   timestamps: false,
@@ -33,11 +41,11 @@ export class Result extends Model<Result> {
   declare diffPercent: number;
 
   @Column({
-      type: DataType.INTEGER,
+      type: DataType.STRING,
       field: 'result_status',
       allowNull: true,
   })
-  declare resultStatus: number;
+  declare resultStatus: ResultStatus;
 
   @Column({
     type: DataType.TEXT,

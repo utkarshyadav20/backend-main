@@ -1,5 +1,5 @@
 import { Injectable, Inject, InternalServerErrorException, NotFoundException, BadRequestException } from '@nestjs/common';
-import { FigmaScreens, Projects } from '../../shared/entity/index.js';
+import { FigmaScreens, Projects, Result, ResultStatus } from '../../shared/entity/index.js';
 import { CreateFigmaScreensDto } from './dto/figma-screen.dto.js';
 
 @Injectable()
@@ -9,6 +9,8 @@ export class FigmaService {
     private figmaScreensRepository: typeof FigmaScreens,
     @Inject('PROJECTS_REPOSITORY')
     private projectsRepository: typeof Projects,
+    @Inject('RESULT_REPOSITORY')
+    private resultRepository: typeof Result,
   ) {}
 
   async processScreens(dto: CreateFigmaScreensDto): Promise<any> {
@@ -53,6 +55,18 @@ export class FigmaService {
         } as any);
 
         results.push(newScreen);
+
+        // CREATE RESULT IF BUILD ID PRESENT
+        if (dto.build_id) {
+            await this.resultRepository.create<Result>({
+                projectId: dto.project_id,
+                buildId: dto.build_id,
+                imageName: screen.Screen_name,
+                resultStatus: ResultStatus.ON_HOLD,
+                // diff_percent: null, 
+                // heapmap_result: null,
+            } as any);
+        }
       } catch (error) {
         console.error(`Error processing screen ${screen.Screen_name}:`, error);
       }
@@ -157,32 +171,50 @@ export class FigmaService {
       return { success: true, message: `Deleted ${deletedCount} screens for project ${projectId} type ${projectType}` };
   }
 
-  async uploadManualScreen(projectId: string, projectType: string, screenName: string, imageUrl: string): Promise<FigmaScreens> {
+  async uploadManualScreen(projectId: string, projectType: string, screenName: string, imageUrl: string, buildId?: string): Promise<FigmaScreens> {
+      // Sanitize screenName: remove extension if present (e.g. "image.png" -> "image")
+      const sanitizedScreenName = screenName.replace(/\.[^/.]+$/, "");
+
       // Check if screen exists to update or create new
-      const existingScreen = await this.figmaScreensRepository.findOne({
+      let screen = await this.figmaScreensRepository.findOne({
           where: {
               projectId,
               projectType,
-              screenName
+              screenName: sanitizedScreenName
           }
       });
 
-      if (existingScreen) {
-          await existingScreen.update({
+      if (screen) {
+          await screen.update({
               extractedImage: imageUrl,
               // Keep existing nodeId/url if they exist, or use defaults for manual overrides
           });
-          return existingScreen;
       } else {
-          return this.figmaScreensRepository.create<FigmaScreens>({
+          screen = await this.figmaScreensRepository.create<FigmaScreens>({
               projectId,
               projectType,
-              screenName,
+              screenName: sanitizedScreenName,
               extractedImage: imageUrl,
               nodeId: `manual-${Date.now()}`,
               figmaUrl: 'manual-upload'
           } as any);
       }
+
+      // CREATE RESULT IF BUILD ID PRESENT
+      if (buildId) {
+           await this.resultRepository.create<Result>({
+                projectId,
+                buildId,
+                imageName: sanitizedScreenName,
+                resultStatus: ResultStatus.ON_HOLD,
+            } as any);
+      }
+      
+      if (!screen) {
+          throw new InternalServerErrorException("Failed to process screen");
+      }
+
+      return screen;
   }
 
   async extractImageFromUrl(url: string): Promise<string> {

@@ -60,11 +60,12 @@ export class FigmaController {
       @Body('projectId') projectId: string,
       @Body('projectType') projectType: string,
       @Body('screenName') screenName: string,
+      @Body('buildId') buildId?: string,
   ) {
       if (!imageUrl) {
           throw new BadRequestException('No imageUrl provided');
       }
-      return this.figmaService.uploadManualScreen(projectId, projectType, screenName, imageUrl);
+      return this.figmaService.uploadManualScreen(projectId, projectType, screenName, imageUrl, buildId);
   }
   @Post('extract-image')
   async extractImage(
@@ -72,6 +73,7 @@ export class FigmaController {
       @Body('projectId') projectId?: string,
       @Body('projectType') projectType?: string,
       @Body('screenName') screenName?: string,
+      @Body('buildId') buildId?: string,
   ) {
       if (!url) {
           throw new BadRequestException('URL is required');
@@ -81,7 +83,7 @@ export class FigmaController {
       if (projectId && projectType) {
           // If project context provided, save it immediately (like manual upload)
           const name = screenName || 'Figma Screen'; 
-          const savedScreen = await this.figmaService.uploadManualScreen(projectId, projectType, name, imageUrl);
+          const savedScreen = await this.figmaService.uploadManualScreen(projectId, projectType, name, imageUrl, buildId);
           return { imageUrl, savedScreen };
       }
 

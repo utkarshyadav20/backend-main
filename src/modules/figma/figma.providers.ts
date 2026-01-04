@@ -1,4 +1,4 @@
-import { FigmaScreens, Projects } from '../../shared/entity/index.js';
+import { FigmaScreens, Projects, Result } from '../../shared/entity/index.js';
 
 export const figmaProviders = [
   {
@@ -8,5 +8,9 @@ export const figmaProviders = [
   {
     provide: 'PROJECTS_REPOSITORY',
     useValue: Projects,
+  },
+  {
+    provide: 'RESULT_REPOSITORY',
+    useValue: Result,
   },
 ];
