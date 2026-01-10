@@ -20,7 +20,7 @@ async function bootstrap() {
   app.use(json({ limit: '100mb' }));
   app.use(urlencoded({ extended: true, limit: '100mb' }));
 
-  const port = Number(process.env.G_PORT) || 8080;
+  const port = Number(process.env.PORT) || 8080;
   await app.listen(port, '0.0.0.0');
 
 }
