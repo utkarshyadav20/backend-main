@@ -214,7 +214,8 @@ export class CompareService {
               boxes: comparisonResult.boxes,
               counts: comparisonResult.counts,
               dimensions: comparisonResult.dimensions
-            }
+            },
+            timestamp: new Date(),
           };
 
           if (resultRecord) {
@@ -294,12 +295,28 @@ export class CompareService {
     this.logger.log(`Triggering n8n webhook for ${imagesToanalyze.length} images`);
 
     try {
-      const response = await lastValueFrom(this.httpService.post(webhookUrl, { imagesToanalyze }));
+      this.logger.log(`Sending request to N8N... (Timeout: 600000ms)`);
+      const response = await lastValueFrom(this.httpService.post(webhookUrl, { imagesToanalyze }, {
+        timeout: 600000 // 10 minutes timeout
+      }));
       this.logger.log('n8n webhook triggered successfully');
 
       // Process and store the response
-      if (response.data && response.data.data) {
-        const webhookData = response.data.data;
+      this.logger.log(`N8N Response Status: ${response.status}`);
+      this.logger.log(`N8N Response Data: ${JSON.stringify(response.data)}`);
+
+      // Process and store the response
+      this.logger.log(`N8N Response Status: ${response.status}`);
+      this.logger.log(`N8N Response Data: ${JSON.stringify(response.data)}`);
+
+      let webhookData: any[] = [];
+      if (response.data && Array.isArray(response.data.data)) {
+        webhookData = response.data.data;
+      } else if (Array.isArray(response.data)) {
+        webhookData = response.data;
+      }
+
+      if (webhookData.length > 0) {
         this.logger.log(`Received ${webhookData.length} analysis results from webhook`);
 
         const recordsToCreate = webhookData.map((item: any) => ({
@@ -310,8 +327,10 @@ export class CompareService {
           coordsVsText: item.analysis,
         }));
 
-        await this.modelResultRepository.bulkCreate(recordsToCreate);
+        await this.modelResultRepository.bulkCreate(recordsToCreate as any);
         this.logger.log('Model results stored successfully from webhook response');
+      } else {
+        this.logger.warn('N8N response did not contain a valid data array (checked response.data and response.data.data)');
       }
 
     } catch (error) {
@@ -400,10 +419,20 @@ export class CompareService {
     // Analyze diff for boxes
     const analysis = this.analyzeDiff(diffPng);
 
+    // Calculate Perceptual Score (Area based)
+    // Sum the area of all detected boxes to get the "Visually Affected Area"
+    const totalAffectedArea = analysis.boxes.reduce((sum, box) => sum + (box.width * box.height), 0);
+    const perceptualScore = totalAffectedArea / (width * height);
+
+    // Use the HIGHER of the two scores to ensure we capture structural issues (perceptual) 
+    // while correctly flagging high-noise variance (pixel) if that's dominant.
+    // Ensure we don't exceed 100% (1.0)
+    const finalDiffScore = Math.min(Math.max(diffScore, perceptualScore), 1.0);
+
     return {
-      diffScore,
+      diffScore: finalDiffScore,
       diffImageBuffer,
-      matched: diffPixels === 0,
+      matched: finalDiffScore === 0,
       ...analysis // Include boxes, counts, dimensions
     };
   }

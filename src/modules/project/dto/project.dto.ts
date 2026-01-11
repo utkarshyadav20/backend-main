@@ -7,7 +7,7 @@ export class ProjectDto {
   @IsString()
   readonly projectName: string;
 
-  @IsIn(['smart image', 'website', 'android tv', 'roku tv', 'mobile'])
+  @IsIn(['smart image', 'website', 'android tv', 'roku tv', 'mobile', 'fire tv', 'smart tv'])
   readonly projectType: string;
 
   @IsString()

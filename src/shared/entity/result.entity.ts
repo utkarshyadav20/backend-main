@@ -34,16 +34,16 @@ export class Result extends Model<Result> {
   declare imageName: string;
 
   @Column({
-      type: DataType.INTEGER,
-      field: 'diff_percent',
-      allowNull: true,
+    type: DataType.INTEGER,
+    field: 'diff_percent',
+    allowNull: true,
   })
   declare diffPercent: number;
 
   @Column({
-      type: DataType.STRING,
-      field: 'result_status',
-      allowNull: true,
+    type: DataType.STRING,
+    field: 'result_status',
+    allowNull: true,
   })
   declare resultStatus: ResultStatus;
 
@@ -60,6 +60,13 @@ export class Result extends Model<Result> {
     allowNull: true,
   })
   declare coordinates: any;
+
+  @Column({
+    type: DataType.DATE,
+    field: 'timestamp',
+    allowNull: true,
+  })
+  declare timestamp: Date;
 
   @PrimaryKey
   @Column({
