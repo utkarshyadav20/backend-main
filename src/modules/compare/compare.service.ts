@@ -24,18 +24,18 @@ export class CompareService {
     @Inject('MODEL_RESULT_REPOSITORY')
     private modelResultRepository: typeof ModelResult,
     private readonly httpService: HttpService,
-  ) {}
+  ) { }
 
   async compareScreens(projectId: string, projectType: string, screenshots: CompareScreenshotDto[], buildIdParam?: string, sensitivity?: number, minScore?: number) {
     const results: any[] = [];
-    
+
     // 1. Handle Build ID (use passed one OR generate new one)
     let buildId = buildIdParam;
     let buildName = buildIdParam; // As per request: "giving it the same name as the buuild id" if created
-    
+
     if (!buildId) {
-       buildId = `${Date.now()}build`;
-       buildName = buildId;
+      buildId = `${Date.now()}build`;
+      buildName = buildId;
     }
 
     // 2. Check/Create Build
@@ -55,7 +55,7 @@ export class CompareService {
     for (const screenshot of screenshots) {
       const imageName = screenshot.imageName.replace(/\.[^/.]+$/, "");
       try {
-      const existingScreenshot = await this.screenshotRepository.findOne({
+        const existingScreenshot = await this.screenshotRepository.findOne({
           where: {
             buildId: buildId,
             imageName: imageName,
@@ -66,19 +66,19 @@ export class CompareService {
 
         // const cleanBase64 = screenshot.image.replace(/^data:image\/\w+;base64,/, '');
         // const imageBuffer = Buffer.from(cleanBase64, 'base64');
-        
+
         // REFACTOR: Save URL directly
-        const imageUrl = screenshot.image; 
+        const imageUrl = screenshot.image;
 
         if (existingScreenshot) {
-           await existingScreenshot.update({
-             screenshot: imageUrl,
-             projectId,
-           } as any);
+          await existingScreenshot.update({
+            screenshot: imageUrl,
+            projectId,
+          } as any);
         } else {
           await this.screenshotRepository.create({
             projectId,
-            buildId, 
+            buildId,
             imageName: imageName,
             screenshot: imageUrl,
           } as any);
@@ -92,26 +92,26 @@ export class CompareService {
     // 4. Compare logic
     // Fetch ALL Figma screens for the project first
     const figmaScreens = await this.figmaScreensRepository.findAll({
-        where: { projectId, projectType }
+      where: { projectId, projectType }
     });
-    
+
     // Create a Set of all unique names (from Figma and Screenshots)
     const uniqueNames = new Set<string>();
-    
+
     // Convert screenshots array to a Map for easy lookup
     const screenshotMap = new Map<string, any>();
     for (const s of screenshots) {
-        // Strip extension to get clean name
-        const cleanName = s.imageName.replace(/\.[^/.]+$/, ""); 
-        uniqueNames.add(cleanName);
-        screenshotMap.set(cleanName, s);
+      // Strip extension to get clean name
+      const cleanName = s.imageName.replace(/\.[^/.]+$/, "");
+      uniqueNames.add(cleanName);
+      screenshotMap.set(cleanName, s);
     }
-    
+
     // Add all Figma screen names to the Set and Map for lookup
     const figmaMap = new Map<string, any>();
     for (const f of figmaScreens) {
-        uniqueNames.add(f.screenName);
-        figmaMap.set(f.screenName, f);
+      uniqueNames.add(f.screenName);
+      figmaMap.set(f.screenName, f);
     }
 
     for (const imageName of uniqueNames) {
@@ -120,130 +120,130 @@ export class CompareService {
 
         const screenshot = screenshotMap.get(imageName);
         const matchingScreen = figmaMap.get(imageName);
-        
+
         // Find existing result record
         let resultRecord = await this.resultRepository.findOne({
-            where: { projectId, buildId, imageName }
+          where: { projectId, buildId, imageName }
         });
-        
+
         // CASE 1: Screenshot exists
         if (screenshot) {
-             // If matching Figma screen missing -> ERROR
-            if (!matchingScreen || !matchingScreen.extractedImage) {
-                 this.logger.warn(`No matching Figma screen found for ${imageName}`);
-                 
-                 const resultData = {
-                      projectId,
-                      buildId,
-                      imageName,
-                      resultStatus: ResultStatus.ERROR, // Mark as ERROR
-                      diffPercent: 0,
-                      heapmapResult: null,
-                      coordinates: null 
-                 };
-                 
-                 if (resultRecord) {
-                    await resultRecord.update(resultData as any);
-                 } else {
-                    await this.resultRepository.create(resultData as any);
-                 }
-                 
-                 continue; // Skip comparison
-            }
-            
-            // If Figma screen exists -> Proceed with comparison
-            
-            // Set IN_PROGRESS
-            if (resultRecord) {
-                await resultRecord.update({ resultStatus: ResultStatus.IN_PROGRESS });
-            } else {
-                 resultRecord = await this.resultRepository.create({
-                    projectId,
-                    buildId,
-                    imageName,
-                    resultStatus: ResultStatus.IN_PROGRESS
-                } as any);
-            }
+          // If matching Figma screen missing -> ERROR
+          if (!matchingScreen || !matchingScreen.extractedImage) {
+            this.logger.warn(`No matching Figma screen found for ${imageName}`);
 
-            // REFACTOR: Screenshot is now a URL. Download it.
-            const screenshotUrl = screenshot.image; 
-            const screenshotResponse = await fetch(screenshotUrl);
-            if (!screenshotResponse.ok) throw new Error(`Failed to fetch screenshot from ${screenshotUrl}`);
-            const screenshotBuffer = Buffer.from(await screenshotResponse.arrayBuffer());
-            
-            // REFACTOR: Figma image is now a URL. Download it.
-            const figmaUrl = matchingScreen.extractedImage;
-            const figmaResponse = await fetch(figmaUrl);
-            if (!figmaResponse.ok) throw new Error(`Failed to fetch figma image from ${figmaUrl}`);
-            const figmaBuffer = Buffer.from(await figmaResponse.arrayBuffer());
-    
-            const comparisonResult = await this.performComparison(
-              figmaBuffer,
-              screenshotBuffer,
-              sensitivity,
-            );
-    
-            // Upload Heatmap to Cloudinary
-            let heatmapUrl: string | null = '';
-            try {
-                heatmapUrl = await this.uploadToCloudinary(comparisonResult.diffImageBuffer);
-            } catch (uploadError) {
-                this.logger.error(`Failed to upload heatmap for ${imageName}`, uploadError);
-                heatmapUrl = null; 
-            }
-    
-            // Calculate Result Status based on minScore or default threshold
-            let resultStatus = ResultStatus.FAIL;
-            if (minScore !== undefined && minScore !== null) {
-                const allowedDiff = (100 - minScore) / 100;
-                resultStatus = comparisonResult.diffScore <= allowedDiff ? ResultStatus.PASS : ResultStatus.FAIL;
-            } else {
-                 // Default logic: < 0.07 (7%) is PASS
-                resultStatus = comparisonResult.diffScore < 0.07 ? ResultStatus.PASS : ResultStatus.FAIL;
-            }
-    
-            // Save result to DB using the existing record
             const resultData = {
               projectId,
               buildId,
               imageName,
-              diffPercent: Math.round(comparisonResult.diffScore * 100),
-              resultStatus: resultStatus,
-              heapmapResult: heatmapUrl,
-              coordinates: {
-                  boxes: comparisonResult.boxes,
-                  counts: comparisonResult.counts,
-                  dimensions: comparisonResult.dimensions
-              }
+              resultStatus: ResultStatus.ERROR, // Mark as ERROR
+              diffPercent: 0,
+              heapmapResult: null,
+              coordinates: null
             };
-    
+
             if (resultRecord) {
-                await resultRecord.update(resultData as any);
+              await resultRecord.update(resultData as any);
             } else {
-                await this.resultRepository.create(resultData as any);
+              await this.resultRepository.create(resultData as any);
             }
-    
-            const { diffImageBuffer, ...restResult } = comparisonResult;
-            results.push({
-              imageName: imageName,
-              ...restResult,
-              heatmapUrl, 
-              screenshotUrl,
-              figmaUrl,
-            });
+
+            continue; // Skip comparison
+          }
+
+          // If Figma screen exists -> Proceed with comparison
+
+          // Set IN_PROGRESS
+          if (resultRecord) {
+            await resultRecord.update({ resultStatus: ResultStatus.IN_PROGRESS });
+          } else {
+            resultRecord = await this.resultRepository.create({
+              projectId,
+              buildId,
+              imageName,
+              resultStatus: ResultStatus.IN_PROGRESS
+            } as any);
+          }
+
+          // REFACTOR: Screenshot is now a URL. Download it.
+          const screenshotUrl = screenshot.image;
+          const screenshotResponse = await fetch(screenshotUrl);
+          if (!screenshotResponse.ok) throw new Error(`Failed to fetch screenshot from ${screenshotUrl}`);
+          const screenshotBuffer = Buffer.from(await screenshotResponse.arrayBuffer());
+
+          // REFACTOR: Figma image is now a URL. Download it.
+          const figmaUrl = matchingScreen.extractedImage;
+          const figmaResponse = await fetch(figmaUrl);
+          if (!figmaResponse.ok) throw new Error(`Failed to fetch figma image from ${figmaUrl}`);
+          const figmaBuffer = Buffer.from(await figmaResponse.arrayBuffer());
+
+          const comparisonResult = await this.performComparison(
+            figmaBuffer,
+            screenshotBuffer,
+            sensitivity,
+          );
+
+          // Upload Heatmap to Cloudinary
+          let heatmapUrl: string | null = '';
+          try {
+            heatmapUrl = await this.uploadToCloudinary(comparisonResult.diffImageBuffer);
+          } catch (uploadError) {
+            this.logger.error(`Failed to upload heatmap for ${imageName}`, uploadError);
+            heatmapUrl = null;
+          }
+
+          // Calculate Result Status based on minScore or default threshold
+          let resultStatus = ResultStatus.FAIL;
+          if (minScore !== undefined && minScore !== null) {
+            const allowedDiff = (100 - minScore) / 100;
+            resultStatus = comparisonResult.diffScore <= allowedDiff ? ResultStatus.PASS : ResultStatus.FAIL;
+          } else {
+            // Default logic: < 0.07 (7%) is PASS
+            resultStatus = comparisonResult.diffScore < 0.07 ? ResultStatus.PASS : ResultStatus.FAIL;
+          }
+
+          // Save result to DB using the existing record
+          const resultData = {
+            projectId,
+            buildId,
+            imageName,
+            diffPercent: Math.round(comparisonResult.diffScore * 100),
+            resultStatus: resultStatus,
+            heapmapResult: heatmapUrl,
+            coordinates: {
+              boxes: comparisonResult.boxes,
+              counts: comparisonResult.counts,
+              dimensions: comparisonResult.dimensions
+            }
+          };
+
+          if (resultRecord) {
+            await resultRecord.update(resultData as any);
+          } else {
+            await this.resultRepository.create(resultData as any);
+          }
+
+          const { diffImageBuffer, ...restResult } = comparisonResult;
+          results.push({
+            imageName: imageName,
+            ...restResult,
+            heatmapUrl,
+            screenshotUrl,
+            figmaUrl,
+          });
 
         } else {
-            // CASE 2: Screenshot MISSING (only in Figma)
-            // Ensure a result row exists, likely ON_HOLD or similar if not found
-             if (!resultRecord) {
-                 await this.resultRepository.create({
-                    projectId,
-                    buildId,
-                    imageName,
-                    resultStatus: ResultStatus.ON_HOLD // Or keep null/default
-                } as any);
-             }
-             // If record exists, we leave it be (it might be On Hold from previous steps)
+          // CASE 2: Screenshot MISSING (only in Figma)
+          // Ensure a result row exists, likely ON_HOLD or similar if not found
+          if (!resultRecord) {
+            await this.resultRepository.create({
+              projectId,
+              buildId,
+              imageName,
+              resultStatus: ResultStatus.ON_HOLD // Or keep null/default
+            } as any);
+          }
+          // If record exists, we leave it be (it might be On Hold from previous steps)
         }
 
       } catch (error) {
@@ -257,68 +257,68 @@ export class CompareService {
 
     // Trigger N8N Webhook with gathered results
     if (results.length > 0) {
-        this.triggerN8nWebhook(results, projectId, buildId, projectType).catch(err => {
-            this.logger.error('Failed to trigger background N8N webhook', err);
-        });
+      this.triggerN8nWebhook(results, projectId, buildId, projectType).catch(err => {
+        this.logger.error('Failed to trigger background N8N webhook', err);
+      });
     }
 
     return results;
   }
 
   private async triggerN8nWebhook(results: any[], projectId: string, buildId: string, projectType: string) {
-      let webhookUrl = process.env.N8N_WEBHOOK_URL;
-      if (!webhookUrl) {
-          this.logger.warn('N8N_WEBHOOK_URL not set, skipping webhook trigger');
-          return;
+    let webhookUrl = process.env.N8N_WEBHOOK_URL;
+    if (!webhookUrl) {
+      this.logger.warn('N8N_WEBHOOK_URL not set, skipping webhook trigger');
+      return;
+    }
+
+    // Append query parameters
+    const separator = webhookUrl.includes('?') ? '&' : '?';
+    webhookUrl = `${webhookUrl}${separator}projectId=${projectId}&buildId=${buildId}&projectType=${projectType}`;
+
+    const imagesToanalyze = results.filter(r => !r.error).map(result => ({
+      imageName: result.imageName,
+      mismatchPercent: result.diffScore !== undefined ? (result.diffScore * 100).toFixed(2) : '0',
+      originalImageUrl: result.figmaUrl || '',
+      screenshot: result.screenshotUrl || '',
+      differenceImageUrl: result.heatmapUrl,
+      boxed_coordinats: {
+        boxes: result.boxes,
+        counts: result.counts,
+        dimensions: result.dimensions
+      },
+    }));
+
+    if (imagesToanalyze.length === 0) return;
+
+    this.logger.log(`Triggering n8n webhook for ${imagesToanalyze.length} images`);
+
+    try {
+      const response = await lastValueFrom(this.httpService.post(webhookUrl, { imagesToanalyze }));
+      this.logger.log('n8n webhook triggered successfully');
+
+      // Process and store the response
+      if (response.data && response.data.data) {
+        const webhookData = response.data.data;
+        this.logger.log(`Received ${webhookData.length} analysis results from webhook`);
+
+        const recordsToCreate = webhookData.map((item: any) => ({
+          projectId,
+          buildId,
+          projectType,
+          imageName: item.imageName,
+          coordsVsText: item.analysis,
+        }));
+
+        await this.modelResultRepository.bulkCreate(recordsToCreate);
+        this.logger.log('Model results stored successfully from webhook response');
       }
-      
-      // Append query parameters
-      const separator = webhookUrl.includes('?') ? '&' : '?';
-      webhookUrl = `${webhookUrl}${separator}projectId=${projectId}&buildId=${buildId}&projectType=${projectType}`;
 
-      const imagesToanalyze = results.filter(r => !r.error).map(result => ({
-          imageName: result.imageName,
-          mismatchPercent: result.diffScore !== undefined ? (result.diffScore * 100).toFixed(2) : '0',
-          originalImageUrl: result.figmaUrl || '', 
-          screenshot: result.screenshotUrl || '',
-          differenceImageUrl: result.heatmapUrl,
-          boxed_coordinats: {
-              boxes: result.boxes,
-              counts: result.counts,
-              dimensions: result.dimensions
-          },
-      }));
-
-      if (imagesToanalyze.length === 0) return;
-
-      this.logger.log(`Triggering n8n webhook for ${imagesToanalyze.length} images`);
-      
-      try {
-          const response = await lastValueFrom(this.httpService.post(webhookUrl, { imagesToanalyze }));
-          this.logger.log('n8n webhook triggered successfully');
-
-          // Process and store the response
-          if (response.data && response.data.data) {
-              const webhookData = response.data.data;
-              this.logger.log(`Received ${webhookData.length} analysis results from webhook`);
-
-              const recordsToCreate = webhookData.map((item: any) => ({
-                  projectId,
-                  buildId,
-                  projectType,
-                  imageName: item.imageName,
-                  coordsVsText: item.analysis,
-              }));
-
-              await this.modelResultRepository.bulkCreate(recordsToCreate);
-              this.logger.log('Model results stored successfully from webhook response');
-          }
-
-      } catch (error) {
-          this.logger.error('Error triggering n8n webhook or storing results', error);
-          // Don't throw logic error here to avoid failing the main comparison if webhook/storage fails, 
-          // but log it strictly.
-      }
+    } catch (error) {
+      this.logger.error('Error triggering n8n webhook or storing results', error);
+      // Don't throw logic error here to avoid failing the main comparison if webhook/storage fails, 
+      // but log it strictly.
+    }
   }
 
   private async uploadToCloudinary(imageBuffer: Buffer): Promise<string> {
@@ -333,13 +333,13 @@ export class CompareService {
     formData.append('upload_preset', UPLOAD_PRESET);
 
     const response = await fetch(url, {
-        method: 'POST',
-        body: formData
+      method: 'POST',
+      body: formData
     });
 
     if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Cloudinary upload failed: ${response.status} ${response.statusText} - ${errorText}`);
+      const errorText = await response.text();
+      throw new Error(`Cloudinary upload failed: ${response.status} ${response.statusText} - ${errorText}`);
     }
 
     const data = await response.json();
@@ -350,18 +350,18 @@ export class CompareService {
     // REFACTOR: Input is now a buffer (downloaded in caller)
     // const cleanBase64 = screenshotBase64.replace(/^data:image\/\w+;base64,/, '');
     // const screenshotBuffer = Buffer.from(cleanBase64, 'base64');
-    
+
     let screenshotPng: PNG;
     // Check for JPEG signature (FF D8)
     if (screenshotBuffer.length > 0 && screenshotBuffer[0] === 0xFF && screenshotBuffer[1] === 0xD8) {
-        const rawJpeg = jpeg.decode(screenshotBuffer, { useTArray: true });
-        screenshotPng = {
-            width: rawJpeg.width,
-            height: rawJpeg.height,
-            data: rawJpeg.data
-        } as PNG;
+      const rawJpeg = jpeg.decode(screenshotBuffer, { useTArray: true });
+      screenshotPng = {
+        width: rawJpeg.width,
+        height: rawJpeg.height,
+        data: rawJpeg.data
+      } as PNG;
     } else {
-        screenshotPng = PNG.sync.read(screenshotBuffer);
+      screenshotPng = PNG.sync.read(screenshotBuffer);
     }
 
     // Decode Figma Image
@@ -370,181 +370,181 @@ export class CompareService {
     // Match Dimensions (Use smallest common dimensions)
     const width = Math.min(screenshotPng.width, figmaPng.width);
     const height = Math.min(screenshotPng.height, figmaPng.height);
-    
+
     const resizedScreenshot = this.resizeImage(screenshotPng, width, height);
     const resizedFigma = this.resizeImage(figmaPng, width, height);
 
     // Pixelmatch Configuration
     const pixelmatchThreshold = {
-        1: 0.9,
-        2: 0.7,
-        3: 0.5,
-        4: 0.3,
-        5: 0.1 
+      1: 0.9,
+      2: 0.7,
+      3: 0.5,
+      4: 0.3,
+      5: 0.1
     }[sensitivity] || 0.5;
 
     const diffPng = new PNG({ width, height });
     const { default: pixelmatch } = await import('pixelmatch');
     const diffPixels = pixelmatch(
-        resizedScreenshot.data,
-        resizedFigma.data,
-        diffPng.data,
-        width,
-        height,
-        { threshold: pixelmatchThreshold }
+      resizedScreenshot.data,
+      resizedFigma.data,
+      diffPng.data,
+      width,
+      height,
+      { threshold: pixelmatchThreshold }
     );
 
     const diffScore = diffPixels / (width * height);
     const diffImageBuffer = PNG.sync.write(diffPng);
-    
+
     // Analyze diff for boxes
     const analysis = this.analyzeDiff(diffPng);
 
     return {
-        diffScore,
-        diffImageBuffer,
-        matched: diffPixels === 0,
-        ...analysis // Include boxes, counts, dimensions
+      diffScore,
+      diffImageBuffer,
+      matched: diffPixels === 0,
+      ...analysis // Include boxes, counts, dimensions
     };
   }
 
   private analyzeDiff(diffPng: PNG) {
-      const { width, height, data } = diffPng;
-      
-      // Grid configuration
-      const GRID_SIZE = 20; // 20x20 pixels blocks
-      const rows = Math.ceil(height / GRID_SIZE);
-      const cols = Math.ceil(width / GRID_SIZE);
-      
-      // 2D array to track active blocks
-      const grid = Array(rows).fill(null).map(() => 
-          Array(cols).fill(null).map(() => ({ active: false, pixelCount: 0 }))
-      );
+    const { width, height, data } = diffPng;
 
-      // 1. Scan pixels and populate grid
-      for (let y = 0; y < height; y++) {
-          for (let x = 0; x < width; x++) {
-              const i = (y * width + x) * 4;
-              const r = data[i];
-              const g = data[i + 1];
-              const b = data[i + 2];
-              
-              // Detect Red diff pixels (Pixelmatch default: 255, 0, 0)
-              // We use a threshold to be safe
-              const isDiff = r > 150 && g < 100 && b < 100;
-              
-              if (isDiff) {
-                  const gy = Math.floor(y / GRID_SIZE);
-                  const gx = Math.floor(x / GRID_SIZE);
-                  // Boundary check
-                  if (gy < rows && gx < cols) {
-                    grid[gy][gx].pixelCount++;
-                  }
-              }
+    // Grid configuration
+    const GRID_SIZE = 20; // 20x20 pixels blocks
+    const rows = Math.ceil(height / GRID_SIZE);
+    const cols = Math.ceil(width / GRID_SIZE);
+
+    // 2D array to track active blocks
+    const grid = Array(rows).fill(null).map(() =>
+      Array(cols).fill(null).map(() => ({ active: false, pixelCount: 0 }))
+    );
+
+    // 1. Scan pixels and populate grid
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4;
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+
+        // Detect Red diff pixels (Pixelmatch default: 255, 0, 0)
+        // We use a threshold to be safe
+        const isDiff = r > 150 && g < 100 && b < 100;
+
+        if (isDiff) {
+          const gy = Math.floor(y / GRID_SIZE);
+          const gx = Math.floor(x / GRID_SIZE);
+          // Boundary check
+          if (gy < rows && gx < cols) {
+            grid[gy][gx].pixelCount++;
           }
+        }
       }
+    }
 
-      // 2. Mark blocks as active if they have enough diff pixels
-      for (let r = 0; r < rows; r++) {
-          for (let c = 0; c < cols; c++) {
-              // If density in block > 2% roughly (20*20*0.02 = 8 pixels)
-              if (grid[r][c].pixelCount > 5) {
-                  grid[r][c].active = true;
+    // 2. Mark blocks as active if they have enough diff pixels
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        // If density in block > 2% roughly (20*20*0.02 = 8 pixels)
+        if (grid[r][c].pixelCount > 5) {
+          grid[r][c].active = true;
+        }
+      }
+    }
+
+    // 3. Simple Connected Components on Grid
+    const visited = Array(rows).fill(false).map(() => Array(cols).fill(false));
+    const foundBoxes: any[] = [];
+
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if (grid[r][c].active && !visited[r][c]) {
+          // Start BFS for a new component
+          const queue = [{ r, c }];
+          visited[r][c] = true;
+
+          let minR = r, maxR = r;
+          let minC = c, maxC = c;
+          let totalPixels = 0;
+
+          while (queue.length > 0) {
+            const { r: cr, c: cc } = queue.shift()!;
+
+            minR = Math.min(minR, cr);
+            maxR = Math.max(maxR, cr);
+            minC = Math.min(minC, cc);
+            maxC = Math.max(maxC, cc);
+            totalPixels += grid[cr][cc].pixelCount;
+
+            // Check 4 neighbors
+            const neighbors = [
+              { nr: cr - 1, nc: cc },
+              { nr: cr + 1, nc: cc },
+              { nr: cr, nc: cc - 1 },
+              { nr: cr, nc: cc + 1 },
+              // Diagonals
+              { nr: cr - 1, nc: cc - 1 },
+              { nr: cr - 1, nc: cc + 1 },
+              { nr: cr + 1, nc: cc - 1 },
+              { nr: cr + 1, nc: cc + 1 },
+            ];
+
+            for (const { nr, nc } of neighbors) {
+              if (
+                nr >= 0 && nr < rows &&
+                nc >= 0 && nc < cols &&
+                !visited[nr][nc] &&
+                grid[nr][nc].active
+              ) {
+                visited[nr][nc] = true;
+                queue.push({ r: nr, c: nc });
               }
+            }
           }
-      }
 
-      // 3. Simple Connected Components on Grid
-      const visited = Array(rows).fill(false).map(() => Array(cols).fill(false));
-      const foundBoxes: any[] = [];
+          // Create Box
+          const bx = minC * GRID_SIZE;
+          const by = minR * GRID_SIZE;
+          const bw = (maxC - minC + 1) * GRID_SIZE;
+          const bh = (maxR - minR + 1) * GRID_SIZE;
 
-      for (let r = 0; r < rows; r++) {
-          for (let c = 0; c < cols; c++) {
-              if (grid[r][c].active && !visited[r][c]) {
-                  // Start BFS for a new component
-                  const queue = [{ r, c }];
-                  visited[r][c] = true;
-                  
-                  let minR = r, maxR = r;
-                  let minC = c, maxC = c;
-                  let totalPixels = 0;
+          const area = bw * bh;
+          const density = totalPixels / area;
 
-                  while (queue.length > 0) {
-                      const { r: cr, c: cc } = queue.shift()!;
-                      
-                      minR = Math.min(minR, cr);
-                      maxR = Math.max(maxR, cr);
-                      minC = Math.min(minC, cc);
-                      maxC = Math.max(maxC, cc);
-                      totalPixels += grid[cr][cc].pixelCount;
+          let severity = 'Low';
+          if (density > 0.3) severity = 'Major'; // >30% red pixels
+          else if (density > 0.05) severity = 'Medium';
 
-                      // Check 4 neighbors
-                      const neighbors = [
-                          { nr: cr - 1, nc: cc },
-                          { nr: cr + 1, nc: cc },
-                          { nr: cr, nc: cc - 1 },
-                          { nr: cr, nc: cc + 1 },
-                          // Diagonals
-                          { nr: cr - 1, nc: cc - 1 },
-                          { nr: cr - 1, nc: cc + 1 },
-                          { nr: cr + 1, nc: cc - 1 },
-                          { nr: cr + 1, nc: cc + 1 },
-                      ];
-
-                      for (const { nr, nc } of neighbors) {
-                          if (
-                              nr >= 0 && nr < rows &&
-                              nc >= 0 && nc < cols &&
-                              !visited[nr][nc] &&
-                              grid[nr][nc].active
-                          ) {
-                              visited[nr][nc] = true;
-                              queue.push({ r: nr, c: nc });
-                          }
-                      }
-                  }
-
-                  // Create Box
-                  const bx = minC * GRID_SIZE;
-                  const by = minR * GRID_SIZE;
-                  const bw = (maxC - minC + 1) * GRID_SIZE;
-                  const bh = (maxR - minR + 1) * GRID_SIZE;
-                  
-                  const area = bw * bh;
-                  const density = totalPixels / area;
-                  
-                  let severity = 'Low';
-                  if (density > 0.3) severity = 'Major'; // >30% red pixels
-                  else if (density > 0.05) severity = 'Medium';
-                  
-                  // Only add significant regions
-                  if (bw > 10 && bh > 10) {
-                      foundBoxes.push({
-                          id: `${bx}-${by}`,
-                          x: bx,
-                          y: by,
-                          width: bw,
-                          height: bh,
-                          density,
-                          severity,
-                          pixelCount: totalPixels
-                      });
-                  }
-              }
+          // Only add significant regions
+          if (bw > 10 && bh > 10) {
+            foundBoxes.push({
+              id: `${bx}-${by}`,
+              x: bx,
+              y: by,
+              width: bw,
+              height: bh,
+              density,
+              severity,
+              pixelCount: totalPixels
+            });
           }
+        }
       }
+    }
 
-      const counts = {
-        Major: foundBoxes.filter(b => b.severity === 'Major').length,
-        Medium: foundBoxes.filter(b => b.severity === 'Medium').length,
-        Low: foundBoxes.filter(b => b.severity === 'Low').length,
-      };
+    const counts = {
+      Major: foundBoxes.filter(b => b.severity === 'Major').length,
+      Medium: foundBoxes.filter(b => b.severity === 'Medium').length,
+      Low: foundBoxes.filter(b => b.severity === 'Low').length,
+    };
 
-      return {
-          boxes: foundBoxes,
-          counts,
-          dimensions: { width, height }
-      };
+    return {
+      boxes: foundBoxes,
+      counts,
+      dimensions: { width, height }
+    };
   }
 
   private resizeImage(png: PNG, targetWidth: number, targetHeight: number): PNG {
