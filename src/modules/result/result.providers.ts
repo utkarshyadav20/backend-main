@@ -1,4 +1,4 @@
-import { Result, ModelResult } from '../../shared/entity/index.js';
+import { Result, ModelResult, Projects, Build } from '../../shared/entity/index.js';
 
 export const resultProviders = [
   {
@@ -8,5 +8,13 @@ export const resultProviders = [
   {
     provide: 'MODEL_RESULT_REPOSITORY',
     useValue: ModelResult,
+  },
+  {
+    provide: 'PROJECT_REPOSITORY',
+    useValue: Projects,
+  },
+  {
+    provide: 'BUILD_REPOSITORY',
+    useValue: Build,
   },
 ];
