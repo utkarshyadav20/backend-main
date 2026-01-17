@@ -26,7 +26,6 @@ export class ProjectService {
 
   async findAll(): Promise<ProjectDto[]> {
     const projects = await this.projectsRepository.findAll<Projects>();
-    console.log(projects);
     return projects.map(project => {
       const data = project.get();
       return {
