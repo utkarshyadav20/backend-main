@@ -4,7 +4,7 @@ import { StoreModelResultDto } from './dto/model-result.dto.js';
 
 @Controller('result')
 export class ResultController {
-  constructor(private readonly resultService: ResultService) {}
+  constructor(private readonly resultService: ResultService) { }
 
   @Get('get-results')
   async getResults(
@@ -31,6 +31,14 @@ export class ResultController {
     @Query('projectType') projectType: string,
   ) {
     return this.resultService.getModelResult(projectId, buildId, imageName, projectType);
+  }
+
+  @Get('build-report')
+  async getBuildReport(
+    @Query('projectId') projectId: string,
+    @Query('buildId') buildId: string,
+  ) {
+    return this.resultService.getBuildReport(projectId, buildId);
   }
   // @Post('store-model-result')
   // async storeModelResult(@Body() storeModelResultDto: StoreModelResultDto) {
