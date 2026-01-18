@@ -1,6 +1,7 @@
 import { Controller, Get, Query, Post, Body } from '@nestjs/common';
 import { ResultService } from './result.service';
 import { StoreModelResultDto } from './dto/model-result.dto.js';
+import { UpdateModelResultItemDto } from './dto/update-model-result-item.dto';
 
 @Controller('result')
 export class ResultController {
@@ -40,6 +41,23 @@ export class ResultController {
   ) {
     return this.resultService.getBuildReport(projectId, buildId);
   }
+
+  @Post('update-model-item')
+  async updateModelItem(
+    @Query('projectId') projectId: string,
+    @Query('buildId') buildId: string,
+    @Query('screenName') screenName: string,
+    @Body() dto: UpdateModelResultItemDto
+  ) {
+    return this.resultService.updateModelResultItem(
+      projectId,
+      buildId,
+      screenName,
+      dto.itemId,
+      dto.updates
+    );
+  }
+
   // @Post('store-model-result')
   // async storeModelResult(@Body() storeModelResultDto: StoreModelResultDto) {
   //   return this.resultService.storeModelResult(storeModelResultDto);

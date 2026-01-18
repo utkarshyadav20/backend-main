@@ -220,4 +220,52 @@ export class ResultService {
   //       throw error;
   //     }
   //   }
+  async updateModelResultItem(projectId: string, buildId: string, screenName: string, itemId: string, updates: Record<string, any>) {
+    try {
+      this.logger.log(`Updating model result item for screen: ${screenName}, item: ${itemId}`);
+
+      const modelResult = await this.modelResultRepository.findOne({
+        where: {
+          projectId,
+          buildId,
+          imageName: screenName
+        }
+      });
+
+      if (!modelResult) {
+        throw new Error(`Model result not found for screen ${screenName} in build ${buildId}`);
+      }
+
+      const coordsVsText = modelResult.coordsVsText;
+      if (!Array.isArray(coordsVsText)) {
+        throw new Error(`Invalid coordsVsText format for screen ${screenName}`);
+      }
+
+      let itemFound = false;
+      const updatedCoordsVsText = coordsVsText.map((item: any) => {
+        if (item.id === itemId) {
+          itemFound = true;
+          return { ...item, ...updates };
+        }
+        return item;
+      });
+
+      if (!itemFound) {
+        throw new Error(`Item with id ${itemId} not found in model result`);
+      }
+
+      // Update the record
+      // Note: For JSONB updates in Sequelize/Postgres, we often need to explicitly set the field or use specific update syntax.
+      // Simply assigning and saving *should* work if the ORM detects the change, but sometimes a `changed('coordsVsText', true)` is needed.
+      // However, `update` method is usually safer for explicit writes.
+
+      await modelResult.update({ coordsVsText: updatedCoordsVsText } as any);
+
+      return { success: true, message: 'Item updated successfully', updatedItem: updates };
+
+    } catch (error) {
+      this.logger.error('Error updating model result item', error);
+      throw error;
+    }
+  }
 }
