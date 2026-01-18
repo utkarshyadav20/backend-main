@@ -116,8 +116,6 @@ export class CompareService {
 
     for (const imageName of uniqueNames) {
       try {
-        console.log(projectId, projectType, imageName);
-
         const screenshot = screenshotMap.get(imageName);
         const matchingScreen = figmaMap.get(imageName);
 
@@ -319,15 +317,75 @@ export class CompareService {
       if (webhookData.length > 0) {
         this.logger.log(`Received ${webhookData.length} analysis results from webhook`);
 
-        const recordsToCreate = webhookData.map((item: any) => ({
-          projectId,
-          buildId,
-          projectType,
-          imageName: item.imageName,
-          coordsVsText: item.analysis,
-        }));
+        const recordsToCreate = webhookData.map((item: any) => {
+          let mergedAnalysis: any[] = [];
+          if (Array.isArray(item.analysis)) {
+            const grouped = new Map<string, any[]>();
+            item.analysis.forEach((aItem: any) => {
+              const id = aItem.id || 'unknown';
+              if (!grouped.has(id)) {
+                grouped.set(id, []);
+              }
+              grouped.get(id)!.push(aItem);
+            });
 
-        await this.modelResultRepository.bulkCreate(recordsToCreate as any);
+            mergedAnalysis = Array.from(grouped.entries()).map(([id, items]) => {
+              if (items.length === 1) return items[0];
+
+              const mergedItem = { ...items[0] };
+              const keys = Object.keys(mergedItem);
+
+              keys.forEach(key => {
+                if (key === 'id') return; // ID is already the grouping key
+
+                // Check if all items have this key and if it's a string
+                const isStringField = items.every(i => typeof i[key] === 'string' || i[key] === null || i[key] === undefined);
+
+                if (isStringField) {
+                  const uniqueValues = Array.from(new Set(items.map(i => i[key]))).filter(val => val !== null && val !== undefined && val !== '');
+                  if (uniqueValues.length > 0) {
+                    mergedItem[key] = uniqueValues.join(', ');
+                  }
+                }
+                // For non-string fields (like numbers), we stick to the first item's value (mergedItem),
+                // assuming geometry shouldn't vary significantly for the same ID.
+              });
+
+              return mergedItem;
+            });
+          }
+
+          return {
+            projectId,
+            buildId,
+            projectType,
+            imageName: item.imageName,
+            coordsVsText: mergedAnalysis,
+          };
+        });
+
+        // Replace bulkCreate with upsert logic
+        for (const record of recordsToCreate) {
+          try {
+            const existingModelResult = await this.modelResultRepository.findOne({
+              where: {
+                projectId: record.projectId,
+                buildId: record.buildId,
+                imageName: record.imageName,
+                projectType: record.projectType
+              }
+            });
+
+            if (existingModelResult) {
+              await existingModelResult.update({ coordsVsText: record.coordsVsText } as any);
+            } else {
+              await this.modelResultRepository.create(record as any);
+            }
+          } catch (err) {
+            this.logger.error(`Error saving model result for ${record.imageName}`, err);
+          }
+        }
+
         this.logger.log('Model results stored successfully from webhook response');
       } else {
         this.logger.warn('N8N response did not contain a valid data array (checked response.data and response.data.data)');
