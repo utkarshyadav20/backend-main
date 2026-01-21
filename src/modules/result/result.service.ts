@@ -172,7 +172,8 @@ export class ResultService {
           // We will attach the full model result data or merge its analysis
           modelAnalysis: modelResult ? {
             id: modelResult.id,
-            coordsVsText: modelResult.coordsVsText
+            coordsVsText: modelResult.coordsVsText,
+            summary: modelResult.summary
           } : null,
 
           createdAt: result.createdAt

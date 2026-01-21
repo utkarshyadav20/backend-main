@@ -40,6 +40,13 @@ export class ModelResult extends Model<ModelResult> {
     allowNull: true,
   })
   declare projectType: string;
+  @Column({
+    type: DataType.TEXT,
+    field: 'summary',
+    allowNull: true,
+  })
+  declare summary: string;
+
 
 
   @Column({

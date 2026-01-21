@@ -360,6 +360,7 @@ export class CompareService {
             buildId,
             projectType,
             imageName: item.imageName,
+            summary: item.Summary,
             coordsVsText: mergedAnalysis,
           };
         });
@@ -377,7 +378,10 @@ export class CompareService {
             });
 
             if (existingModelResult) {
-              await existingModelResult.update({ coordsVsText: record.coordsVsText } as any);
+              await existingModelResult.update({
+                coordsVsText: record.coordsVsText,
+                summary: record.summary
+              } as any);
             } else {
               await this.modelResultRepository.create(record as any);
             }
