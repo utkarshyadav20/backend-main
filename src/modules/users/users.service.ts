@@ -14,7 +14,7 @@ export class UsersService {
         user.username = createUserDto.username;
         user.email = createUserDto.email;
         user.password = createUserDto.password;
-        user.role = createUserDto.role || UserRole.VIEWER;
+        user.role = createUserDto.role || UserRole.ADMIN;
         user.otp = (createUserDto.otp || null) as any;
         user.otpExpiry = (createUserDto.otpExpiry || null) as any;
         return user.save();

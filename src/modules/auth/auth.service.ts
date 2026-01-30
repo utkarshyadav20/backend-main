@@ -37,6 +37,11 @@ export class AuthService {
     }
 
     async signUp(userDto: CreateUserDto) {
+        const existingUser = await this.usersService.findOneByEmail(userDto.email);
+        if (existingUser) {
+            throw new UnauthorizedException('User with this email already exists');
+        }
+
         const salt = await bcrypt.genSalt();
         const hashedPassword = await bcrypt.hash(userDto.password, salt);
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
