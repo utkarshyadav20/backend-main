@@ -81,7 +81,7 @@ export class ResultService {
         screenName,
 
         // Result Data
-        resultStatus: result?.resultStatus ?? 0,
+        resultStatus: result?.resultStatus ?? 'pending',
         diffPercent: result?.diffPercent ?? 0,
         diffImageUrl: result?.heapmapResult || null, // Note: field is typo'd in entity as heapmapResult or similar
         coordinates: result?.coordinates || null,
@@ -266,6 +266,42 @@ export class ResultService {
 
     } catch (error) {
       this.logger.error('Error updating model result item', error);
+      throw error;
+    }
+  }
+
+  async updateResultStatus(projectId: string, buildId: string, screenName: string, status: string | number) {
+    try {
+      this.logger.log(`Updating result status for screen: ${screenName}, status: ${status}`);
+
+      const result = await this.resultRepository.findOne({
+        where: {
+          projectId,
+          buildId,
+          imageName: screenName,
+        },
+      });
+
+      if (!result) {
+        throw new Error(`Result not found for screen ${screenName} in build ${buildId}`);
+      }
+
+      // Convert status to standard string labels
+      let statusValue: string;
+      const s = (status ?? '').toString().toLowerCase();
+
+      if (s === 'passed' || s === 'pass' || s === '1') statusValue = 'pass';
+      else if (s === 'failed' || s === 'fail' || s === '0') statusValue = 'fail';
+      else if (s === 'inprogress') statusValue = 'inprogress';
+      else if (s === 'on hold' || s === 'onhold') statusValue = 'on hold';
+      else if (s === 'error') statusValue = 'error';
+      else statusValue = s; // Fallback to raw string if unknown but provided
+
+      await result.update({ resultStatus: statusValue } as any);
+
+      return { success: true, message: 'Status updated successfully', newStatus: statusValue };
+    } catch (error) {
+      this.logger.error('Error updating result status', error);
       throw error;
     }
   }

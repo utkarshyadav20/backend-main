@@ -58,6 +58,21 @@ export class ResultController {
     );
   }
 
+  @Post('update-status')
+  async updateStatus(
+    @Query('projectId') projectId: string,
+    @Query('buildId') buildId: string,
+    @Query('screenName') screenName: string,
+    @Body('status') status: string | number
+  ) {
+    return this.resultService.updateResultStatus(
+      projectId,
+      buildId,
+      screenName,
+      status
+    );
+  }
+
   // @Post('store-model-result')
   // async storeModelResult(@Body() storeModelResultDto: StoreModelResultDto) {
   //   return this.resultService.storeModelResult(storeModelResultDto);
