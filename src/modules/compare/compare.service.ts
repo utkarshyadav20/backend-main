@@ -360,7 +360,7 @@ export class CompareService {
             buildId,
             projectType,
             imageName: item.imageName,
-            summary: item.Summary,
+            summary: item.Summary || item.summary,
             coordsVsText: mergedAnalysis,
           };
         });
