@@ -15,5 +15,9 @@ export class CreateAutomationCodeDto {
     automationCode: Record<string, any>;
 
     @IsOptional()
+    @IsOptional()
     variables: Record<string, any>;
+
+    @IsOptional()
+    screenOrder: string[];
 }

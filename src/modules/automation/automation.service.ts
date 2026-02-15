@@ -7,7 +7,7 @@ import { AutomationCode } from '../../shared/entity/automation-code.entity';
 export class AutomationService {
 
     async create(createDto: CreateAutomationCodeDto) {
-        const { projectId, buildId, automationCode, variables } = createDto;
+        const { projectId, buildId, automationCode, variables, screenOrder } = createDto;
 
         // Check if an entry exists for this projectId and buildId
         let entry = await AutomationCode.findOne({
@@ -23,6 +23,9 @@ export class AutomationService {
             if (variables) {
                 entry.setDataValue('variables', variables);
             }
+            if (screenOrder) {
+                entry.setDataValue('screenOrder', screenOrder);
+            }
             await entry.save();
             await entry.reload();
             return { message: 'Automation code updated successfully', data: entry };
@@ -31,7 +34,8 @@ export class AutomationService {
                 projectId,
                 buildId,
                 automationCode,
-                variables
+                variables,
+                screenOrder
             } as any);
             return { message: 'Automation code saved successfully', data: entry };
         }

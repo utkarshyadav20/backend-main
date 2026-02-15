@@ -34,10 +34,18 @@ export class AutomationCode extends Model<AutomationCode> {
     })
     automationCode: Record<string, string>;
 
+
     @Column({
         type: DataType.JSON,
         field: 'Variables',
         allowNull: true,
     })
     variables: Record<string, string>;
+
+    @Column({
+        type: DataType.JSON,
+        field: 'Screen_order',
+        allowNull: true,
+    })
+    screenOrder: string[];
 }
