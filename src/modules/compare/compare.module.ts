@@ -3,10 +3,11 @@ import { CompareController } from './compare.controller';
 import { CompareService } from './compare.service';
 import { compareProviders } from './compare.providers';
 import { HttpModule } from '@nestjs/axios';
+import { CloudStorageModule } from '../cloud-storage/cloud-storage.module';
 
 @Module({
-  imports: [HttpModule],
+  imports: [HttpModule, CloudStorageModule],
   controllers: [CompareController],
   providers: [CompareService, ...compareProviders],
 })
-export class CompareModule {}
+export class CompareModule { }
