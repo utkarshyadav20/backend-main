@@ -7,6 +7,7 @@ import jpeg from 'jpeg-js';
 import { Buffer } from 'node:buffer';
 import { HttpService } from '@nestjs/axios';
 import { lastValueFrom } from 'rxjs';
+import { CloudStorageService } from '../cloud-storage/cloud-storage.service';
 
 @Injectable()
 export class CompareService {
@@ -24,6 +25,7 @@ export class CompareService {
     @Inject('MODEL_RESULT_REPOSITORY')
     private modelResultRepository: typeof ModelResult,
     private readonly httpService: HttpService,
+    private readonly cloudStorageService: CloudStorageService,
   ) { }
 
   async compareScreens(projectId: string, projectType: string, screenshots: CompareScreenshotDto[], buildIdParam?: string, sensitivity?: number, minScore?: number) {
@@ -181,10 +183,11 @@ export class CompareService {
             sensitivity,
           );
 
-          // Upload Heatmap to Cloudinary
+          // Upload Heatmap to Google Cloud Storage
           let heatmapUrl: string | null = '';
           try {
-            heatmapUrl = await this.uploadToCloudinary(comparisonResult.diffImageBuffer);
+            const uniqueFilename = `heatmap-${Date.now()}-${imageName}.png`;
+            heatmapUrl = await this.cloudStorageService.uploadImage(comparisonResult.diffImageBuffer, uniqueFilename);
           } catch (uploadError) {
             this.logger.error(`Failed to upload heatmap for ${imageName}`, uploadError);
             heatmapUrl = null;
@@ -400,31 +403,6 @@ export class CompareService {
       // Don't throw logic error here to avoid failing the main comparison if webhook/storage fails, 
       // but log it strictly.
     }
-  }
-
-  private async uploadToCloudinary(imageBuffer: Buffer): Promise<string> {
-    const CLOUD_NAME = 'compareui';
-    const UPLOAD_PRESET = 'Compare_ui';
-    const url = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`;
-
-    const formData = new FormData();
-    // Create a Blob from buffer for FormData
-    const blob = new Blob([new Uint8Array(imageBuffer)], { type: 'image/png' });
-    formData.append('file', blob, 'heatmap.png');
-    formData.append('upload_preset', UPLOAD_PRESET);
-
-    const response = await fetch(url, {
-      method: 'POST',
-      body: formData
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Cloudinary upload failed: ${response.status} ${response.statusText} - ${errorText}`);
-    }
-
-    const data = await response.json();
-    return data.secure_url;
   }
 
   private async performComparison(figmaImageBuffer: Buffer, screenshotBuffer: Buffer, sensitivity = 3) {

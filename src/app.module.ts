@@ -14,6 +14,7 @@ import { ScreenshotModule } from './modules/screenshot/screenshot.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { MailModule } from './modules/mail/mail.module';
+import { AutomationModule } from './modules/automation/automation.module';
 
 import { APP_GUARD } from '@nestjs/core';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
@@ -30,6 +31,7 @@ import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
     AuthModule,
     UsersModule,
     MailModule,
+    AutomationModule,
   ],
   controllers: [AppController],
   providers: [
