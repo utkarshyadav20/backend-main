@@ -1,5 +1,5 @@
-import { Injectable, Inject } from '@nestjs/common';
-import { Projects, Build, Result, FigmaScreens, Screenshot, ModelResult } from '../../shared/entity/index.js';
+import { Injectable, Inject, Logger } from '@nestjs/common';
+import { Projects, Build, Result, FigmaScreens, Screenshot, ModelResult, ResultStatus } from '../../shared/entity/index.js';
 import { Sequelize } from 'sequelize-typescript';
 import { SEQUELIZE } from '../../shared/utils/constant/sequelize/sequelize-constant.js';
 import { ProjectDto } from './dto/project.dto.js';
@@ -26,14 +26,76 @@ export class ProjectService {
 
   async findAll(): Promise<ProjectDto[]> {
     const projects = await this.projectsRepository.findAll<Projects>();
-    return projects.map(project => {
+
+    return Promise.all(projects.map(async (project) => {
       const data = project.get();
+
+      const latestBuild = await this.buildRepository.findOne({
+        where: { projectId: data.projectId },
+        order: [['lastCompared', 'DESC']],
+      });
+      Logger.log(latestBuild)
+      let passCount: number | undefined = undefined;
+      let failCount: number | undefined = undefined;
+      let comparisonRunning = false;
+      let lastCompared: Date | undefined = undefined;
+
+      let latestbuildTStats: {
+        buildId?: string;
+        buildName?: string;
+        passCount?: number;
+        failCount?: number;
+        comparisonRunning?: boolean;
+        lastCompared?: Date;
+      } | {} = {};
+
+      if (latestBuild) {
+        comparisonRunning = latestBuild.comparisonRunning || false;
+        lastCompared = latestBuild.lastCompared || undefined;
+
+        if (lastCompared) {
+          passCount = await this.resultRepository.count({
+            where: {
+              projectId: data.projectId,
+              buildId: latestBuild.buildId,
+              resultStatus: ResultStatus.PASS,
+            }
+          });
+
+          failCount = await this.resultRepository.count({
+            where: {
+              projectId: data.projectId,
+              buildId: latestBuild.buildId,
+              resultStatus: ResultStatus.FAIL,
+            }
+          });
+        }
+
+        if (lastCompared) {
+          latestbuildTStats = {
+            buildId: latestBuild.buildId,
+            buildName: latestBuild.buildName,
+            passCount,
+            failCount,
+            comparisonRunning,
+            lastCompared
+          };
+        } else if (comparisonRunning) {
+          latestbuildTStats = {
+            buildId: latestBuild.buildId,
+            buildName: latestBuild.buildName,
+            comparisonRunning,
+          };
+        }
+      }
+
       return {
         projectId: data.projectId,
         projectName: data.projectName,
         projectType: data.projectType,
+        latestbuildTStats
       };
-    });
+    }));
   }
 
   async create(projectDto: ProjectDto): Promise<ProjectDto> {
@@ -43,8 +105,9 @@ export class ProjectService {
       projectType: projectDto.projectType,
     } as any);
 
-    if (projectDto.buildName) {
-      await this.createBuild(projectDto.projectId, { buildName: projectDto.buildName });
+    const dtoAny = projectDto as any;
+    if (dtoAny.buildName) {
+      await this.createBuild(projectDto.projectId, { buildName: dtoAny.buildName });
     }
 
     return {
