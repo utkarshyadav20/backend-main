@@ -18,21 +18,21 @@ export class AutomationCode extends Model<AutomationCode> {
         field: 'Project_id',
         allowNull: false,
     })
-    projectId: string;
+    declare projectId: string;
 
     @Column({
         type: DataType.STRING,
         field: 'Build_id',
         allowNull: false,
     })
-    buildId: string;
+    declare buildId: string;
 
     @Column({
         type: DataType.JSON,
         field: 'Automation_code',
         allowNull: true,
     })
-    automationCode: Record<string, string>;
+    declare automationCode: Record<string, string>;
 
 
     @Column({
@@ -40,12 +40,12 @@ export class AutomationCode extends Model<AutomationCode> {
         field: 'Variables',
         allowNull: true,
     })
-    variables: Record<string, string>;
+    declare variables: Record<string, string>;
 
     @Column({
         type: DataType.JSON,
         field: 'Screen_order',
         allowNull: true,
     })
-    screenOrder: string[];
+    declare screenOrder: string[];
 }

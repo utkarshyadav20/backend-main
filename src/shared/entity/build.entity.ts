@@ -9,19 +9,33 @@ export class Build extends Model<Build> {
     primaryKey: true,
     field: 'Build_id',
   })
-  buildId: string;
+  declare buildId: string;
 
   @Column({
     type: DataType.STRING,
     field: 'Project_id',
   })
-  projectId: string;
+  declare projectId: string;
 
   @Column({
     type: DataType.STRING,
     field: 'Build_name',
     allowNull: true,
   })
-  buildName: string;
+  declare buildName: string;
 
+  @Column({
+    type: DataType.DATE,
+    field: 'last_compared',
+    allowNull: true,
+  })
+  declare lastCompared: Date;
+
+  @Column({
+    type: DataType.BOOLEAN,
+    field: 'comparison_running',
+    allowNull: true,
+    defaultValue: false,
+  })
+  declare comparisonRunning: boolean;
 }

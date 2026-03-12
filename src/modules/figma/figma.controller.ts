@@ -1,7 +1,6 @@
 import { Body, Controller, Delete, Get, Post, Query, UseInterceptors, UploadedFile, BadRequestException, Res } from '@nestjs/common';
 import { Response } from 'express';
 import axios from 'axios';
-import { FileInterceptor } from '@nestjs/platform-express';
 import { FigmaService } from './figma.service.js';
 import { CreateFigmaScreensDto } from './dto/figma-screen.dto.js';
 import { Public } from '../auth/decorators/public.decorator.js';

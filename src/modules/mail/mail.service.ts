@@ -22,4 +22,26 @@ export class MailService {
       `,
     });
   }
+
+  async sendApprovalRequest(user: any) {
+    const adminEmails = [
+      process.env.MAIL_USER || 'redapeconsulting@gmail.com',
+      '20022002utkarsh@gmail.com'
+    ];
+
+    await this.mailerService.sendMail({
+      to: adminEmails,
+      subject: 'New Account Approval Request',
+      text: `A new user is requesting account approval.\n\nUsername: ${user.username}\nEmail: ${user.email}`,
+      html: `
+        <h3>Account Approval Request</h3>
+        <p>A new user has verified their email and is awaiting account approval.</p>
+        <ul>
+          <li><strong>Username:</strong> ${user.username}</li>
+          <li><strong>Email:</strong> ${user.email}</li>
+        </ul>
+        <p>Please log in to the admin panel to review and approve their account.</p>
+      `,
+    });
+  }
 }
