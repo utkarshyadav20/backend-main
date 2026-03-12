@@ -1,4 +1,4 @@
-import { Controller, Request, Post, UseGuards, Body, Get } from '@nestjs/common';
+import { Controller, Request, Post, UseGuards, Body, Get, Query } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LocalAuthGuard } from './guards/local-auth.guard';
 import { Roles } from './decorators/roles.decorator';
@@ -35,9 +35,21 @@ export class AuthController {
     }
 
     @Public()
+    @Post('request-approval')
+    async requestApproval(@Body('email') email: string) {
+        return this.authService.requestApproval(email);
+    }
+
+    @Public()
     @Post('resend-otp')
     async resendOtp(@Body() resendOtpDto: ResendOtpDto) {
         return this.authService.resendOtp(resendOtpDto.email);
+    }
+
+    @Public()
+    @Get('approval-status')
+    async getApprovalStatus(@Query('email') email: string) {
+        return this.authService.getApprovalStatus(email);
     }
 
     @UseGuards(JwtAuthGuard, RolesGuard)

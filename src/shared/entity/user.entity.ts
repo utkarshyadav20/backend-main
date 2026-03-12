@@ -49,6 +49,18 @@ export class User extends Model<User> {
     declare isVerified: boolean;
 
     @Column({
+        type: DataType.BOOLEAN,
+        defaultValue: false,
+    })
+    declare account_approved: boolean;
+
+    @Column({
+        type: DataType.DATE,
+        allowNull: true,
+    })
+    declare approval_sent_at: Date;
+
+    @Column({
         type: DataType.STRING,
         allowNull: true,
     })
